@@ -1,6 +1,6 @@
 #include <torch/extension.h>
 
-#include "content_area.h"
+#include "torch_content_area.h"
 
 py::tuple circle_to_tuple(Area area)
 {
