@@ -21,7 +21,7 @@ __global__ void draw_circle(Area area, uint8* mask, const uint mask_height, cons
 
     bool in_area = diff < area.circle.r * area.circle.r;
 
-    mask[mask_x + mask_y * mask_width] = in_area ? 0 : 1;
+    mask[mask_x + mask_y * mask_width] = in_area ? 1 : 0;
 }
 
 
@@ -40,7 +40,7 @@ __global__ void draw_rectangle(Area area, uint8* mask, const uint mask_height, c
     in_area &= mask_x > area.rectangle.x && mask_x < area.rectangle.x + area.rectangle.w; 
     in_area &= mask_y > area.rectangle.y && mask_y < area.rectangle.y + area.rectangle.h; 
 
-    mask[mask_x + mask_y * mask_width] = in_area ? 0 : 1;
+    mask[mask_x + mask_y * mask_width] = in_area ? 1 : 0;
 }
 
 
