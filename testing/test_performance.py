@@ -3,7 +3,7 @@ import unittest
 from utils import TestDataLoader, timer, iou_score
 
 import torch
-from content_area import get_area_mask
+from torchcontentarea import get_area_mask
 
 @timer()
 def infer_mask(img, mask):

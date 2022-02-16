@@ -1,5 +1,5 @@
 #include <cuda_runtime.h>
-#include "content_area.h"
+#include "torch_content_area.h"
 
 #define BLOCK_SIZE 32
 #define GRID_SIZE(d) ((d / BLOCK_SIZE) + 1)
