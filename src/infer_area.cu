@@ -1,5 +1,5 @@
 #include <cuda_runtime.h>
-#include "content_area.h"
+#include "torch_content_area.h"
 
 #include <iostream>
 
