@@ -6,8 +6,8 @@ import torch
 from torchcontentarea import get_area_mask
 
 @timer()
-def infer_mask(img, mask):
-    get_area_mask(img.contiguous(), mask.contiguous())
+def infer_mask(img):
+    return get_area_mask(img)
 
 class TestPerformance(unittest.TestCase):
 
@@ -21,8 +21,7 @@ class TestPerformance(unittest.TestCase):
         for img, seg in dataloader:
             img, seg = img.cuda(), seg.cuda()
 
-            mask = torch.empty_like(seg)
-            time = infer_mask(img, mask)
+            time, mask = infer_mask(img)
             score = iou_score(mask, seg)
 
             times.append(time)
