@@ -42,13 +42,19 @@ py::tuple get_area(torch::Tensor image)
     return area_to_tuple(area);
 }
 
-void get_area_mask(torch::Tensor image, torch::Tensor mask) 
+torch::Tensor get_area_mask(torch::Tensor image)
 {
+    image = image.contiguous();
+
     uint height = image.size(1);
     uint width = image.size(2);
 
+    torch::Tensor mask = torch::empty_like(image[0]);
+
     Area area = infer_area_cuda(image.data_ptr<uint8>(), height, width, 8);
     draw_area_cuda(area, mask.data_ptr<uint8>(), height, width);
+
+    return mask;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) 
