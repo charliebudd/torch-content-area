@@ -3,15 +3,70 @@ import unittest
 from utils import TestDataLoader, timer, iou_score
 
 import torch
-from torchcontentarea import get_area_mask
+from torchcontentarea import infer_area, draw_mask, infer_mask
 
 @timer()
-def infer_mask(img):
-    return get_area_mask(img)
+def infer_area_timed(img):
+    infer_area(img)
+    return None
+
+@timer()
+def draw_mask_timed(img):
+    draw_mask(img, ("Circle", (240, 240, 240)))
+    return None
+
+@timer()
+def infer_area_and_draw_mask_timed(img):
+    area = infer_area(img)
+    mask = draw_mask(img, area)
+    return mask
+    
+@timer()
+def infer_mask_timed(img):
+    return infer_mask(img)
+    
 
 class TestPerformance(unittest.TestCase):
+                
+    def test_infer_area(self):
+      
+        dataloader = TestDataLoader()
 
-    def test_get_area_mask(self):
+        times = []
+
+        for img, seg in dataloader:
+            img, seg = img.cuda(), seg.cuda()
+
+            time, _ = infer_area_timed(img)
+
+            times.append(time)
+            
+        avg_time = sum(times) / len(times)
+
+        print(f'')
+        print(f'infer_area...')
+        print(f'Avg Time: {avg_time:.3f}ms')
+
+    def test_draw_mask(self):
+      
+        dataloader = TestDataLoader()
+
+        times = []
+
+        for img, seg in dataloader:
+            img, seg = img.cuda(), seg.cuda()
+
+            time, _ = draw_mask_timed(img)
+
+            times.append(time)
+            
+        avg_time = sum(times) / len(times)
+
+        print(f'')
+        print(f'draw_mask...')
+        print(f'Avg Time: {avg_time:.3f}ms')
+
+    def test_infer_area_and_draw_mask(self):
       
         dataloader = TestDataLoader()
 
@@ -21,7 +76,7 @@ class TestPerformance(unittest.TestCase):
         for img, seg in dataloader:
             img, seg = img.cuda(), seg.cuda()
 
-            time, mask = infer_mask(img)
+            time, mask = infer_area_and_draw_mask_timed(img)
             score = iou_score(mask, seg)
 
             times.append(time)
@@ -31,14 +86,45 @@ class TestPerformance(unittest.TestCase):
         avg_score = sum(scores) / len(scores)
         miss_percentage = 100 * sum(map(lambda x: x < 0.95, scores)) / len(scores)
 
+        print(f'')
+        print(f'infer_area and draw_mask...')
+        print(f'Avg Time: {avg_time:.3f}ms')
+        print(f'Avg Score (IoU): {avg_score:.3f}')
+        print(f'Misses (IoU < 0.95): {miss_percentage:.3f}%')
+
         self.assertTrue(avg_time < 2.0)
         self.assertTrue(avg_score > 0.95)
         self.assertTrue(miss_percentage < 10.0)
 
+    def test_infer_mask(self):
+      
+        dataloader = TestDataLoader()
+
+        times = []
+        scores = []
+
+        for img, seg in dataloader:
+            img, seg = img.cuda(), seg.cuda()
+
+            time, mask = infer_mask_timed(img)
+            score = iou_score(mask, seg)
+
+            times.append(time)
+            scores.append(score)
+            
+        avg_time = sum(times) / len(times)
+        avg_score = sum(scores) / len(scores)
+        miss_percentage = 100 * sum(map(lambda x: x < 0.95, scores)) / len(scores)
+
         print(f'')
+        print(f'infer_mask...')
         print(f'Avg Time: {avg_time:.3f}ms')
         print(f'Avg Score (IoU): {avg_score:.3f}')
         print(f'Misses (IoU < 0.95): {miss_percentage:.3f}%')
+
+        self.assertTrue(avg_time < 2.0)
+        self.assertTrue(avg_score > 0.95)
+        self.assertTrue(miss_percentage < 10.0)
 
 if __name__ == '__main__':
     unittest.main()
