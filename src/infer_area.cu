@@ -1,6 +1,12 @@
 #include <cuda_runtime.h>
 #include "content_area_inference.cuh"
 
+// #define PROFILE
+
+#ifdef PROFILE
+#include <torch/extension.h>
+#endif
+
 __device__ uint8 grayscale(uint8 r, uint8 g, uint8 b)
 {
     return 0.2989 * r + 0.5870 * g + 0.1140 * b;
@@ -253,12 +259,6 @@ void select_final_triple(const uint point_count, const uint* scores, int* indice
 #define warp_size 32
 #define warp_count 16
 
-// #define PROFILE
-
-#ifdef PROFILE
-#include <torch/extension.h>
-#endif
-
 Area ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
 {
     #ifdef PROFILE
@@ -339,7 +339,7 @@ Area ContentAreaInference::infer_area(uint8* image, const uint image_height, con
 
     float milliseconds = 0;
 
-    cudaEventElapsedTime(&milliseconds, a, g);
+    cudaEventElapsedTime(&milliseconds, a, e);
     py::print("TOTAL:", milliseconds);
     cudaEventElapsedTime(&milliseconds, a, b);
     py::print("find points:", milliseconds);
