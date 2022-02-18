@@ -1,7 +1,5 @@
 #include <cuda_runtime.h>
-#include "torch_content_area.h"
-
-#include <iostream>
+#include "content_area_inference.cuh"
 
 __device__ uint8 grayscale(uint8 r, uint8 g, uint8 b)
 {
@@ -38,10 +36,11 @@ __global__ void find_points(uint8* g_image, uint* g_points, const uint image_wid
         g_image[image_x + neighbour_offset + image_y * image_width + 2 * image_width * image_height]
     );
 
-    bool is_edge = abs(home - neighbour) > 10;
+    bool is_edge = abs(home - neighbour) > 6;
     uint index = threadIdx.x;
 
     // Finding warp max
+    #pragma unroll
     for (int offset = 16; offset > 0; offset /= 2)
     {
         bool other_is_edge = __shfl_down_sync(0xffffffff, is_edge, offset);
@@ -70,6 +69,7 @@ __global__ void find_points(uint8* g_image, uint* g_points, const uint image_wid
         is_edge = s_is_edge[lane_index];
         index = s_indicies[lane_index];
 
+        #pragma unroll
         for (int offset = 16; offset > 0; offset /= 2)
         {
             bool other_is_edge = __shfl_down_sync(0xffffffff, is_edge, offset);
@@ -163,6 +163,7 @@ __global__ void check_triples(const uint* g_points, uint* g_point_scores, const 
     score &= r < (0.6 * image_width);
 
     // Warp reduction
+    #pragma unroll
     for (int offset = 16; offset > 0; offset /= 2)
     {
         score += __shfl_down_sync(0xffffffff, score, offset);
@@ -180,7 +181,8 @@ __global__ void check_triples(const uint* g_points, uint* g_point_scores, const 
     if (warp_index == 0 && lane_index < warp_count)
     {
         score = s_scores[lane_index];
-
+        
+        #pragma unroll
         for (int offset = warp_count / 2; offset > 0; offset /= 2)
         {
             score += __shfl_down_sync(0xffffffff, score, offset);
@@ -251,77 +253,103 @@ void select_final_triple(const uint point_count, const uint* scores, int* indice
 #define warp_size 32
 #define warp_count 16
 
-Area infer_area_cuda(uint8* image, const uint image_height, const uint image_width, const uint height_samples)
+// #define PROFILE
+
+#ifdef PROFILE
+#include <torch/extension.h>
+#endif
+
+Area ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
 {
+    #ifdef PROFILE
+    cudaEvent_t a, b, c, d, e;
+    cudaEventCreate(&a);
+    cudaEventCreate(&b);
+    cudaEventCreate(&c);
+    cudaEventCreate(&d);
+    cudaEventCreate(&e);
+    #endif
+
     // #########################################################
     // Some useful values...
 
-    uint point_count = 2 * height_samples;
-    uint height_gap = image_height / height_samples;
-    
-    // #########################################################
-    // Allocating cuda memory...
-
-    uint* dev_points;
-    cudaMalloc(&dev_points, point_count * sizeof(uint));
-
-    uint* dev_point_scores;
-    cudaMalloc(&dev_point_scores, point_count * sizeof(uint));
+    uint height_gap = image_height / m_height_samples;
 
     // #########################################################
     // Finding candididate points...
     // A thread block for each point
+    #ifdef PROFILE
+    cudaEventRecord(a);
+    #endif  
 
-    dim3 find_points_grid(2, height_samples);
+    dim3 find_points_grid(2, m_height_samples);
     dim3 find_points_block(warp_size * warp_count, 1);
-    find_points<warp_count><<<find_points_grid, find_points_block>>>(image, dev_points, image_width, image_height, height_gap, height_samples);
+    find_points<warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_points, image_width, image_height, height_gap, m_height_samples);
     
     // #########################################################
     // Evaluating candidate points...
     // A thread block for each point (left and right)
     // A thread per combination of the other two points in each triple.
+    #ifdef PROFILE
+    cudaEventRecord(b);
+    #endif  
 
-    dim3 check_triples_grid(point_count);
-    dim3 check_triples_block(triangle_size(point_count));
-    check_triples<<<check_triples_grid, check_triples_block>>>(dev_points, dev_point_scores, height_gap, point_count, image_height, image_width);
+    dim3 check_triples_grid(m_point_count);
+    dim3 check_triples_block(triangle_size(m_point_count));
+    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_points, m_dev_scores, height_gap, m_point_count, image_height, image_width);
 
     // #########################################################
     // Reading back results and freeing cuda memory...
+    #ifdef PROFILE
+    cudaEventRecord(c);
+    #endif  
 
-    uint* hst_points = new uint[point_count];
-    cudaMemcpy(hst_points, dev_points, point_count * sizeof(uint), cudaMemcpyDeviceToHost);
-
-    uint* hst_point_scores = new uint[point_count];
-    cudaMemcpy(hst_point_scores, dev_point_scores, point_count * sizeof(uint), cudaMemcpyDeviceToHost);
+    cudaMemcpy(m_hst_block, m_dev_block, 2 * m_point_count * sizeof(uint), cudaMemcpyDeviceToHost);
 
     // #########################################################
     // Choosing the final points and calculating circle...
+    #ifdef PROFILE
+    cudaEventRecord(d);
+    #endif  
 
     int indices[3];
-    select_final_triple(point_count, hst_point_scores, indices);
+    select_final_triple(m_point_count, m_hst_scores, indices);
 
-    float ax = hst_points[indices[0]];
-    float bx = hst_points[indices[1]];
-    float cx = hst_points[indices[2]];
+    float ax = m_hst_points[indices[0]];
+    float bx = m_hst_points[indices[1]];
+    float cx = m_hst_points[indices[2]];
 
-    float ay = int(((indices[0] % height_samples) + 0.5) * height_gap);
-    float by = int(((indices[1] % height_samples) + 0.5) * height_gap);
-    float cy = int(((indices[2] % height_samples) + 0.5) * height_gap);
+    float ay = int(((indices[0] % m_height_samples) + 0.5) * height_gap);
+    float by = int(((indices[1] % m_height_samples) + 0.5) * height_gap);
+    float cy = int(((indices[2] % m_height_samples) + 0.5) * height_gap);
 
     float x, y, r;
     calculate_circle(ax, ay, bx, by, cx, cy, &x, &y, &r);
 
     // #########################################################
-    // Freeing cuda and cpu memory... 
-
-    cudaFree(dev_point_scores);  
-    cudaFree(dev_points);
-
-    delete hst_point_scores;
-    delete hst_points;
-
-    // #########################################################
     // Constructing final area to return...
+    #ifdef PROFILE
+    cudaEventRecord(e);
+
+    cudaEventSynchronize(a);
+    cudaEventSynchronize(b);
+    cudaEventSynchronize(c);
+    cudaEventSynchronize(d);
+    cudaEventSynchronize(e);
+
+    float milliseconds = 0;
+
+    cudaEventElapsedTime(&milliseconds, a, g);
+    py::print("TOTAL:", milliseconds);
+    cudaEventElapsedTime(&milliseconds, a, b);
+    py::print("find points:", milliseconds);
+    cudaEventElapsedTime(&milliseconds, b, c);
+    py::print("check triples:", milliseconds);
+    cudaEventElapsedTime(&milliseconds, c, d);
+    py::print("read back points:", milliseconds);
+    cudaEventElapsedTime(&milliseconds, d, e);
+    py::print("choose final points:", milliseconds);
+    #endif  
 
     Area area;
     area.type = Area::Circle;
@@ -331,64 +359,3 @@ Area infer_area_cuda(uint8* image, const uint image_height, const uint image_wid
 
     return area;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// #define BLOCK_SIZE 32
-// #define GRID_SIZE(d) ((d / BLOCK_SIZE) + 1)
-
-// __global__ void gray_kernel(uint8* g_image, uint8* g_mask, const uint image_height, const uint image_width)
-// {    
-//     uint image_x = threadIdx.x + blockIdx.x * blockDim.x;
-//     uint image_y = threadIdx.y + blockIdx.y * blockDim.y;
-
-//     if (image_x > image_width || image_y > image_height)
-//     {
-//         return;
-//     }
-
-//     uint8 gray = grayscale(
-//         g_image[image_x + image_y * image_width + 0 * image_width * image_height],
-//         g_image[image_x + image_y * image_width + 1 * image_width * image_height],
-//         g_image[image_x + image_y * image_width + 2 * image_width * image_height]
-//     );
-
-//     g_mask[image_x + image_y * image_width] = gray;
-// }
-
-// void gray(uint8* image, uint8* mask, const uint mask_height, const uint mask_width)
-// {
-//     dim3 grid(GRID_SIZE(mask_width), GRID_SIZE(mask_height));
-//     dim3 block(BLOCK_SIZE, BLOCK_SIZE);
-    
-//     std::cout << grid.x << " " << grid.y << std::endl;
-
-//     gray_kernel<<<grid, block>>>(image, mask, mask_height, mask_width);
-// }
-
