@@ -1,5 +1,5 @@
 #include <cuda_runtime.h>
-#include "torch_content_area.h"
+#include "content_area_inference.cuh"
 
 #define BLOCK_SIZE 32
 #define GRID_SIZE(d) ((d / BLOCK_SIZE) + 1)
@@ -44,7 +44,7 @@ __global__ void draw_rectangle(Area area, uint8* mask, const uint mask_height, c
 }
 
 
-void draw_area_cuda(Area area, uint8* mask, const uint mask_height, const uint mask_width)
+void ContentAreaInference::draw_area(Area area, uint8* mask, const uint mask_height, const uint mask_width)
 {
     dim3 grid(GRID_SIZE(mask_width), GRID_SIZE(mask_height));
     dim3 block(BLOCK_SIZE, BLOCK_SIZE);
