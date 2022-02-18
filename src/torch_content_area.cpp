@@ -1,6 +1,5 @@
 #include <torch/extension.h>
-
-#include "torch_content_area.h"
+#include "content_area_inference.cuh"
 
 py::tuple circle_to_tuple(Area area)
 {
@@ -64,19 +63,19 @@ Area tuple_to_area(py::tuple tuple)
     }
 }
 
-py::tuple infer_area(torch::Tensor image) 
+py::tuple infer_area_wrapper(ContentAreaInference &self, torch::Tensor image) 
 {
     image = image.contiguous();
 
     uint height = image.size(1);
     uint width = image.size(2);
 
-    Area area = infer_area_cuda(image.data_ptr<uint8>(), height, width, 8);
+    Area area = self.infer_area(image.data_ptr<uint8>(), height, width);
 
     return area_to_tuple(area);
 }
 
-torch::Tensor draw_mask(torch::Tensor image, py::tuple area_tuple) 
+torch::Tensor draw_area_wrapper(ContentAreaInference &self, torch::Tensor image, py::tuple area_tuple) 
 {
     uint height = image.size(1);
     uint width = image.size(2);
@@ -84,13 +83,12 @@ torch::Tensor draw_mask(torch::Tensor image, py::tuple area_tuple)
     Area area = tuple_to_area(area_tuple);
 
     torch::Tensor mask = torch::empty_like(image[0]);
-    draw_area_cuda(area, mask.data_ptr<uint8>(), height, width);
+    self.draw_area(area, mask.data_ptr<uint8>(), height, width);
 
     return mask;
 }
 
-
-torch::Tensor infer_mask(torch::Tensor image)
+torch::Tensor infer_mask_wrapper(ContentAreaInference &self, torch::Tensor image)
 {
     image = image.contiguous();
 
@@ -98,15 +96,17 @@ torch::Tensor infer_mask(torch::Tensor image)
     uint width = image.size(2);
 
     torch::Tensor mask = torch::empty_like(image[0]);
-    Area area = infer_area_cuda(image.data_ptr<uint8>(), height, width, 8);
-    draw_area_cuda(area, mask.data_ptr<uint8>(), height, width);
+    Area area = self.infer_area(image.data_ptr<uint8>(), height, width);
+    self.draw_area(area, mask.data_ptr<uint8>(), height, width);
 
     return mask;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) 
 {
-    m.def("infer_area", &infer_area, "Infers the conent area for a given endoscopic image");
-    m.def("draw_mask", &draw_mask, "Draws the provided content area");
-    m.def("infer_mask", &infer_mask, "Infers the conent area for a given endoscopic image and returns a binary mask");
+    pybind11::class_<ContentAreaInference>(m, "ContentAreaInference")
+        .def(py::init())
+        .def("infer_area", &infer_area_wrapper, "Infers the content area for a given endoscopic image")
+        .def("draw_mask", &draw_area_wrapper, "Returns a binary mask for the provided content area")
+        .def("infer_mask", &infer_mask_wrapper, "Infers the content area for a given endoscopic image and returns a binary mask");
 }
