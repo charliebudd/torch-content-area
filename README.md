@@ -4,7 +4,7 @@ A PyTorch tool kit for segmenting the endoscopic content area in laparoscopy foo
 ## Installation
 First ensure you have PyTorch installed and the CUDA toolkit is present on your machine, then run...
 ```
-pip install -e git+https://github.com/charliebudd/torch-content-area
+pip install git+https://github.com/charliebudd/torch-content-area.git@main
 ```
 To avoid runtime errors and achieve optimal performance, ensure that your CUDA toolkit version matches the version of CUDA used by your PyTorch version. Currently PyTorch uses either CUDA 10.2 or CUDA 11.3. 
 
