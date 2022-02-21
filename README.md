@@ -31,6 +31,6 @@ mask = content_area.draw_mask(image, area)
 
 ## performance
 Performance is tested against the [dataset](testing/data) included in this repo. The follow results were achieved when running on an NVIDIA Quadro RTX 3000...
-- Avg Time: 0.402ms
-- Avg Score (IoU): 0.984
-- Misses (IoU < 0.95): 5.2%
+- Avg Time: 0.427ms
+- Avg Score (IoU): 0.985
+- Misses (IoU < 0.95): 4.2%
