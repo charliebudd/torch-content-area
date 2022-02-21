@@ -7,9 +7,10 @@
 #include <torch/extension.h>
 #endif
 
-__device__ uint8 grayscale(uint8 r, uint8 g, uint8 b)
+__device__  float normed_euclidean(uint8 r1, uint8 g1, uint8 b1, uint8 r2, uint8 g2, uint8 b2)
 {
-    return 0.2989 * r + 0.5870 * g + 0.1140 * b;
+    #define EUCLID_NORM 441.67f // max possible value... sqrt(3 * 255 ^ 2)
+    return sqrt((r1 - r2) * (r1 - r2) + (g1 - g2) * (g1 - g2) + (b1 - b2) * (b1 - b2)) / EUCLID_NORM;
 }
 
 template<int warp_count>
@@ -27,25 +28,25 @@ __global__ void find_points(uint8* g_image, uint* g_points, const uint image_wid
 
     uint warp_index = threadIdx.x >> 5;
     uint lane_index = threadIdx.x & 31;
-
-    int home = grayscale(
-        g_image[image_x + image_y * image_width + 0 * image_width * image_height],
-        g_image[image_x + image_y * image_width + 1 * image_width * image_height],
-        g_image[image_x + image_y * image_width + 2 * image_width * image_height]
-    );
-
     uint neighbour_offset = flip ? -1 : 1;
 
-    int neighbour = grayscale(
+    float edge_strength = normed_euclidean(
+        g_image[image_x + image_y * image_width + 0 * image_width * image_height],
+        g_image[image_x + image_y * image_width + 1 * image_width * image_height],
+        g_image[image_x + image_y * image_width + 2 * image_width * image_height],
         g_image[image_x + neighbour_offset + image_y * image_width + 0 * image_width * image_height],
         g_image[image_x + neighbour_offset + image_y * image_width + 1 * image_width * image_height],
         g_image[image_x + neighbour_offset + image_y * image_width + 2 * image_width * image_height]
     );
 
-    bool is_edge = abs(home - neighbour) > 6;
+    bool is_edge = edge_strength > 0.026;
+
+    // ######################################
+    // Finding first Edge above threshold...
+
     uint index = threadIdx.x;
 
-    // Finding warp max
+    // Finding first edge in warp
     #pragma unroll
     for (int offset = 16; offset > 0; offset /= 2)
     {
@@ -59,7 +60,7 @@ __global__ void find_points(uint8* g_image, uint* g_points, const uint image_wid
         }
     }
 
-    // Writing warp max to shared memory
+    // Writing first edge in warp to shared memory
     if (lane_index == 0)
     {    
         s_is_edge[warp_index] = is_edge;
@@ -69,7 +70,7 @@ __global__ void find_points(uint8* g_image, uint* g_points, const uint image_wid
     // Syncing between warps
     __syncthreads();
 
-    // Finding block max
+    // Finding first edge in block
     if (warp_index == 0 && lane_index < warp_count)
     {
         is_edge = s_is_edge[lane_index];
@@ -88,7 +89,7 @@ __global__ void find_points(uint8* g_image, uint* g_points, const uint image_wid
             }
         }
 
-        // Outputting result
+        // Saving result to global memory
         if (lane_index == 0)
         {
             int point_offset = flip ? point_count : 0;
@@ -125,7 +126,7 @@ __host__ __device__ uint triangle_size(const uint n)
     return n * (n - 1) / 2;
 }
 
-__device__ void square_indices(const uint k, const uint n, uint* i, uint* j)
+__device__ void square_indices(const int k, const int n, uint* i, uint* j)
 {
     *i = n - 2 - int(sqrt(-8 * k + 4 * n * (n - 1) - 7) / 2.0 - 0.5);
     *j = k + *i + 1 -  n * (n - 1) / 2 + (n - *i) * ((n - *i) - 1) / 2;
