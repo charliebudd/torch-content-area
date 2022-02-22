@@ -18,7 +18,7 @@ ContentAreaInference::ContentAreaInference()
 ContentAreaInference::~ContentAreaInference()
 {
     cudaFree(m_dev_block);
-    cudaFree(m_hst_block);
+    cudaFreeHost(m_hst_block);
 }
 
 // Area ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
