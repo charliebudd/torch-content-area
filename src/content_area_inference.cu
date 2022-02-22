@@ -10,7 +10,7 @@ ContentAreaInference::ContentAreaInference()
     m_dev_points = m_dev_block;
     m_dev_scores = m_dev_block + m_point_count;
     
-    m_hst_block = new uint[2 * m_point_count];
+    cudaMallocHost((void**)&m_hst_block, 2 * m_point_count * sizeof(uint));
     m_hst_points = m_hst_block;
     m_hst_scores = m_hst_block + m_point_count;
 }
@@ -18,7 +18,7 @@ ContentAreaInference::ContentAreaInference()
 ContentAreaInference::~ContentAreaInference()
 {
     cudaFree(m_dev_block);
-    delete[] m_hst_block;
+    cudaFree(m_hst_block);
 }
 
 // Area ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
