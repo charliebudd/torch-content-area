@@ -1,11 +1,7 @@
 #include <cuda_runtime.h>
 #include "content_area_inference.cuh"
 
-// #define PROFILE
-
-#ifdef PROFILE
-#include <torch/extension.h>
-#endif
+#undef PROFILE
 
 __device__  float normed_euclidean(uint8 r1, uint8 g1, uint8 b1, uint8 r2, uint8 g2, uint8 b2)
 {
@@ -341,15 +337,15 @@ Area ContentAreaInference::infer_area(uint8* image, const uint image_height, con
     float milliseconds = 0;
 
     cudaEventElapsedTime(&milliseconds, a, e);
-    py::print("TOTAL:", milliseconds);
+    ADD_SAMPLE("infer area", milliseconds);
     cudaEventElapsedTime(&milliseconds, a, b);
-    py::print("find points:", milliseconds);
+    ADD_SAMPLE("infer area: find points", milliseconds);
     cudaEventElapsedTime(&milliseconds, b, c);
-    py::print("check triples:", milliseconds);
+    ADD_SAMPLE("infer area: check triples", milliseconds);
     cudaEventElapsedTime(&milliseconds, c, d);
-    py::print("read back points:", milliseconds);
+    ADD_SAMPLE("infer area: read back points", milliseconds);
     cudaEventElapsedTime(&milliseconds, d, e);
-    py::print("choose final points:", milliseconds);
+    ADD_SAMPLE("infer area: choose final points", milliseconds);
     #endif  
 
     Area area;
