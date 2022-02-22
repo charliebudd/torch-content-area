@@ -1,6 +1,10 @@
 #pragma once
+
+#include "profiling.h"
+
 typedef unsigned int uint;
 typedef unsigned char uint8;
+
 
 struct Area
 {

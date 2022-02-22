@@ -1,6 +1,10 @@
 #include <torch/extension.h>
 #include "content_area_inference.cuh"
 
+#ifdef PROFILE
+#include <cuda_runtime.h>
+#endif
+
 py::tuple circle_to_tuple(Area area)
 {
     return py::make_tuple(
@@ -90,6 +94,16 @@ torch::Tensor draw_area_wrapper(ContentAreaInference &self, torch::Tensor image,
 
 torch::Tensor infer_mask_wrapper(ContentAreaInference &self, torch::Tensor image)
 {
+    #ifdef PROFILE
+    cudaEvent_t a, b;
+    cudaEventCreate(&a);
+    cudaEventCreate(&b);
+    #endif
+
+    #ifdef PROFILE
+    cudaEventRecord(a);
+    #endif
+
     image = image.contiguous();
 
     uint height = image.size(1);
@@ -98,6 +112,18 @@ torch::Tensor infer_mask_wrapper(ContentAreaInference &self, torch::Tensor image
     torch::Tensor mask = torch::empty_like(image[0]);
     Area area = self.infer_area(image.data_ptr<uint8>(), height, width);
     self.draw_area(area, mask.data_ptr<uint8>(), height, width);
+
+    #ifdef PROFILE
+    cudaEventRecord(b);
+    #endif
+
+    #ifdef PROFILE
+    cudaEventSynchronize(a);
+    cudaEventSynchronize(b);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, a, b);
+    ADD_SAMPLE("infer mask wrapper", milliseconds);
+    #endif
 
     return mask;
 }
@@ -109,4 +135,13 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("infer_area", &infer_area_wrapper, "Infers the content area for a given endoscopic image")
         .def("draw_mask", &draw_area_wrapper, "Returns a binary mask for the provided content area")
         .def("infer_mask", &infer_mask_wrapper, "Infers the content area for a given endoscopic image and returns a binary mask");
+
+
+    #ifdef PROFILE
+    m.def("get_times",
+        []() {
+            return GET_TIMES();
+        }
+    );
+    #endif
 }
