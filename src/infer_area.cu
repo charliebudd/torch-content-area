@@ -3,6 +3,11 @@
 
 #undef PROFILE
 
+#define MAX_CENTER_DIST_X 0.2
+#define MAX_CENTER_DIST_Y 0.2
+#define MIN_RADIUS 0.3
+#define MAX_RADIUS 0.6
+
 __device__  float normed_euclidean(uint8 r1, uint8 g1, uint8 b1, uint8 r2, uint8 g2, uint8 b2)
 {
     #define EUCLID_NORM 441.67f // max possible value... sqrt(3 * 255 ^ 2)
@@ -159,11 +164,11 @@ __global__ void check_triples(const uint* g_points, uint* g_point_scores, const 
     bool valid = calculate_circle(ax, ay, bx, by, cx, cy, &x, &y, &r);
 
     // Filter out bad circles
-    uint score = valid; 
-    score &= abs(x - 0.5 * image_width) < 0.1 * image_width;
-    score &= abs(y - 0.5 * image_height) < 0.1 * image_height;
-    score &= r > (0.3 * image_width);
-    score &= r < (0.6 * image_width);
+    uint score = valid;
+    score &= abs(x - 0.5 * image_width) < MAX_CENTER_DIST_X * 0.5 * image_width;
+    score &= abs(y - 0.5 * image_height) < MAX_CENTER_DIST_Y * 0.5 * image_height;
+    score &= r > (MIN_RADIUS * image_width);
+    score &= r < (MAX_RADIUS * image_width);
 
     // Warp reduction
     #pragma unroll
