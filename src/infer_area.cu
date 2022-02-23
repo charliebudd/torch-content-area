@@ -231,7 +231,7 @@ __global__ void check_triples(const uint* g_points, uint* g_point_scores, const 
 
 float distance_score(const uint height_samples, const uint i, const uint j)
 {
-    float x_diff = ((i > height_samples) != (j > height_samples));
+    float x_diff = (i >= height_samples) != (j >= height_samples);
     float y_diff = abs(float(i % height_samples) - float(j % height_samples)) / height_samples;
 
     return sqrt((x_diff * x_diff + y_diff * y_diff) / 2);
