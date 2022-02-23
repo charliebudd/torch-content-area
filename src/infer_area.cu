@@ -8,7 +8,7 @@
 #define MIN_RADIUS 0.3
 #define MAX_RADIUS 0.6
 
-__device__  float normed_euclidean(uint8 r1, uint8 g1, uint8 b1, uint8 r2, uint8 g2, uint8 b2)
+__device__  float normed_euclidean(float r1, float g1, float b1, float r2, float g2, float b2)
 {
     #define EUCLID_NORM 441.67f // max possible value... sqrt(3 * 255 ^ 2)
     return sqrt((r1 - r2) * (r1 - r2) + (g1 - g2) * (g1 - g2) + (b1 - b2) * (b1 - b2)) / EUCLID_NORM;
@@ -29,23 +29,48 @@ __global__ void find_points(uint8* g_image, uint* g_points, const uint image_wid
 
     uint warp_index = threadIdx.x >> 5;
     uint lane_index = threadIdx.x & 31;
-    uint neighbour_offset = flip ? -1 : 1;
+    uint neighbour_offset = flip ? -2 : 2;
+
+    float home_r = g_image[image_x + (image_y + 0) * image_width + 0 * image_width * image_height] * 2.0f
+                + g_image[image_x + (image_y + 1) * image_width + 0 * image_width * image_height]
+                + g_image[image_x + (image_y - 1) * image_width + 0 * image_width * image_height];
+
+    float home_g = g_image[image_x + (image_y + 0) * image_width + 1 * image_width * image_height] * 2.0f
+                + g_image[image_x + (image_y + 1) * image_width + 1 * image_width * image_height]
+                + g_image[image_x + (image_y - 1) * image_width + 1 * image_width * image_height];
+
+    float home_b = g_image[image_x + (image_y + 0) * image_width + 2 * image_width * image_height] * 2.0f
+                + g_image[image_x + (image_y + 1) * image_width + 2 * image_width * image_height]
+                + g_image[image_x + (image_y - 1) * image_width + 2 * image_width * image_height];
+
+    float neighbour_r = g_image[image_x + neighbour_offset + (image_y + 0) * image_width + 0 * image_width * image_height] * 2.0f
+                    + g_image[image_x + neighbour_offset + (image_y + 1) * image_width + 0 * image_width * image_height]
+                    + g_image[image_x + neighbour_offset + (image_y - 1) * image_width + 0 * image_width * image_height];
+
+    float neighbour_g = g_image[image_x + neighbour_offset + (image_y + 0) * image_width + 1 * image_width * image_height] * 2.0f
+                    + g_image[image_x + neighbour_offset + (image_y + 1) * image_width + 1 * image_width * image_height]
+                    + g_image[image_x + neighbour_offset + (image_y - 1) * image_width + 1 * image_width * image_height];
+
+    float neighbour_b = g_image[image_x + neighbour_offset + (image_y + 0) * image_width + 2 * image_width * image_height] * 2.0f
+                    + g_image[image_x + neighbour_offset + (image_y + 1) * image_width + 2 * image_width * image_height]
+                    + g_image[image_x + neighbour_offset + (image_y - 1) * image_width + 2 * image_width * image_height];
 
     float edge_strength = normed_euclidean(
-        g_image[image_x + image_y * image_width + 0 * image_width * image_height],
-        g_image[image_x + image_y * image_width + 1 * image_width * image_height],
-        g_image[image_x + image_y * image_width + 2 * image_width * image_height],
-        g_image[image_x + neighbour_offset + image_y * image_width + 0 * image_width * image_height],
-        g_image[image_x + neighbour_offset + image_y * image_width + 1 * image_width * image_height],
-        g_image[image_x + neighbour_offset + image_y * image_width + 2 * image_width * image_height]
+        home_r / 4.0f,
+        home_g / 4.0f,
+        home_b / 4.0f,
+        neighbour_r / 4.0f,
+        neighbour_g / 4.0f,
+        neighbour_b / 4.0f
     );
 
-    bool is_edge = edge_strength > 0.026;
+    bool is_edge = edge_strength > 0.049;
+
 
     // ######################################
     // Finding first Edge above threshold...
 
-    uint index = threadIdx.x;
+    uint index = threadIdx.x + 1;
 
     // Finding first edge in warp
     #pragma unroll
