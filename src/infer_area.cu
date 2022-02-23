@@ -199,29 +199,19 @@ __global__ void check_triples(const uint* g_points, uint* g_point_scores, const 
     }
 }
 
-float distance_score(const uint point_count, const uint i, const uint j)
+float distance_score(const uint height_samples, const uint i, const uint j)
 {
-    float x_diff = ((i > point_count) != (j > point_count)); 
-    float y_diff = abs(float(i) - j) / point_count;
+    float x_diff = ((i > height_samples) != (j > height_samples));
+    float y_diff = abs(float(i % height_samples) - float(j % height_samples)) / height_samples;
 
     return sqrt((x_diff * x_diff + y_diff * y_diff) / 2);
 }
 
 void select_final_triple(const uint point_count, const uint* scores, int* indices)
 {
-    float best_value = 0.0f;
     float best_score = 0.0f;
 
-    for (int i = 0; i < point_count; i++)
-    {
-        float score = scores[i];
-
-
-        if (score > best_score)
-        {
-            best_score = score;
-        }
-    }
+    uint height_samples = point_count / 2;
 
     for (int i = 0; i < point_count; i++)
     {
@@ -235,14 +225,12 @@ void select_final_triple(const uint point_count, const uint* scores, int* indice
             {
                 float score_k = scores[k];
 
-                float dist_value = distance_score(point_count, i, j) + distance_score(point_count, i, k) + distance_score(point_count, j, k);
-                float score_value = score_i * score_j * score_k / (3 * best_score * best_score * best_score);
+                float dist_score = distance_score(height_samples, i, j) + distance_score(height_samples, i, k) + distance_score(height_samples, j, k);
+                float score = dist_score * (score_i + score_j + score_k);
 
-                float value = dist_value * score_value;
-
-                if (value > best_value)
+                if (score > best_score)
                 {
-                    best_value = value;
+                    best_score = score;
                     
                     indices[0] = i;
                     indices[1] = j;
