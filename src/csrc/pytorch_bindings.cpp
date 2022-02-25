@@ -128,14 +128,24 @@ torch::Tensor infer_mask_wrapper(ContentAreaInference &self, torch::Tensor image
     return mask;
 }
 
+std::vector<std::vector<int>> get_points_wrapper(ContentAreaInference &self, torch::Tensor image)
+{
+    image = image.contiguous();
+
+    uint height = image.size(1);
+    uint width = image.size(2);
+
+    return self.get_points(image.data_ptr<uint8>(), height, width);
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) 
 {
     pybind11::class_<ContentAreaInference>(m, "ContentAreaInference")
         .def(py::init())
-        .def("infer_area", &infer_area_wrapper, "Infers the content area for a given endoscopic image")
-        .def("draw_mask", &draw_area_wrapper, "Returns a binary mask for the provided content area")
-        .def("infer_mask", &infer_mask_wrapper, "Infers the content area for a given endoscopic image and returns a binary mask");
-
+        .def("infer_area", &infer_area_wrapper)
+        .def("draw_mask", &draw_area_wrapper)
+        .def("infer_mask", &infer_mask_wrapper)
+        .def("get_points", &get_points_wrapper);
 
     #ifdef PROFILE
     m.def("get_times",

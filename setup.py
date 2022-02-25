@@ -1,9 +1,14 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 from torch.utils import cpp_extension
+from glob import glob
 
+ext_src_dir = "src/torchcontentarea/csrc/"
+ext_source_files = glob(ext_src_dir + "*.cpp") + glob(ext_src_dir + "*.cu")
 
 setup(
     name='torchcontentarea',
-    ext_modules=[cpp_extension.CUDAExtension('torchcontentarea', ['src/torch_content_area.cpp', 'src/profiling.cpp', 'src/content_area_inference.cu', 'src/infer_area.cu', 'src/draw_area.cu'])],
+    packages=['torchcontentarea'],
+    package_dir={'':'src'},
+    ext_modules=[cpp_extension.CUDAExtension('_torchcontentareaext', ext_source_files)],
     cmdclass={'build_ext': cpp_extension.BuildExtension}
 )
