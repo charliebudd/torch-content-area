@@ -5,86 +5,22 @@
 #include <cuda_runtime.h>
 #endif
 
-py::tuple circle_to_tuple(Area area)
-{
-    return py::make_tuple(
-        py::cast(area.circle.x),
-        py::cast(area.circle.y),
-        py::cast(area.circle.r)
-    );
-};
-
-py::tuple rectangle_to_tuple(Area area)
-{
-    return py::make_tuple(
-        py::cast(area.rectangle.x),
-        py::cast(area.rectangle.y),
-        py::cast(area.rectangle.w),
-        py::cast(area.rectangle.h)
-    );
-};
-
-py::tuple area_to_tuple(Area area)
-{
-    switch(area.type)
-    {
-        case(Area::Circle): return py::make_tuple("Circle", circle_to_tuple(area)); break;
-        case(Area::Rectangle): return py::make_tuple("Rectangle", rectangle_to_tuple(area)); break;
-        case(Area::None): return py::make_tuple("None"); break;
-        default: return py::none(); break;
-    }
-}
-
-Area tuple_to_area(py::tuple tuple)
-{
-    std::string area_type = tuple[0].cast<std::string>();
-    py::tuple area_info = tuple[1];
-
-    if (area_type == "Circle")
-    {
-        Area area;
-        area.type = Area::Circle;
-        area.circle.x = area_info[0].cast<uint>();
-        area.circle.y = area_info[1].cast<uint>();
-        area.circle.r = area_info[2].cast<uint>();
-        return area;
-    }
-    else if (area_type == "Rectangle")
-    {
-        Area area;
-        area.type = Area::Rectangle;
-        area.rectangle.x = area_info[0].cast<uint>();
-        area.rectangle.y = area_info[1].cast<uint>();
-        area.rectangle.w = area_info[2].cast<uint>();
-        area.rectangle.h = area_info[3].cast<uint>();
-        return area;
-    }
-    else
-    {
-        Area area;
-        area.type = Area::None;
-        return area;
-    }
-}
-
-py::tuple infer_area_wrapper(ContentAreaInference &self, torch::Tensor image) 
+ContentArea infer_area_wrapper(ContentAreaInference &self, torch::Tensor image) 
 {
     image = image.contiguous();
 
     uint height = image.size(1);
     uint width = image.size(2);
 
-    Area area = self.infer_area(image.data_ptr<uint8>(), height, width);
+    ContentArea area = self.infer_area(image.data_ptr<uint8>(), height, width);
 
-    return area_to_tuple(area);
+    return area;
 }
 
-torch::Tensor draw_area_wrapper(ContentAreaInference &self, torch::Tensor image, py::tuple area_tuple) 
+torch::Tensor draw_area_wrapper(ContentAreaInference &self, torch::Tensor image, ContentArea area) 
 {
     uint height = image.size(1);
     uint width = image.size(2);
-
-    Area area = tuple_to_area(area_tuple);
 
     torch::Tensor mask = torch::empty_like(image[0]);
     self.draw_area(area, mask.data_ptr<uint8>(), height, width);
@@ -110,7 +46,7 @@ torch::Tensor infer_mask_wrapper(ContentAreaInference &self, torch::Tensor image
     uint width = image.size(2);
 
     torch::Tensor mask = torch::empty_like(image[0]);
-    Area area = self.infer_area(image.data_ptr<uint8>(), height, width);
+    ContentArea area = self.infer_area(image.data_ptr<uint8>(), height, width);
     self.draw_area(area, mask.data_ptr<uint8>(), height, width);
 
     #ifdef PROFILE
@@ -140,12 +76,20 @@ std::vector<std::vector<int>> get_points_wrapper(ContentAreaInference &self, tor
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) 
 {
+    pybind11::class_<ContentArea>(m, "ContentArea")
+        .def(py::init<>())
+        .def(py::init<uint, uint, uint>())
+        .def_property("_ContentArea__type", [](const ContentArea &a) { return static_cast<int>(a.type); }, [](ContentArea &a, int v) { a.type = static_cast<ContentAreaType>(v); })
+        .def_readwrite("_ContentArea__x", &ContentArea::x)
+        .def_readwrite("_ContentArea__y", &ContentArea::y)
+        .def_readwrite("_ContentArea__r", &ContentArea::r);
+
     pybind11::class_<ContentAreaInference>(m, "ContentAreaInference")
         .def(py::init())
-        .def("infer_area", &infer_area_wrapper)
-        .def("draw_mask", &draw_area_wrapper)
-        .def("infer_mask", &infer_mask_wrapper)
-        .def("get_points", &get_points_wrapper);
+        .def("_ContentAreaInference__infer_area", &infer_area_wrapper)
+        .def("_ContentAreaInference__draw_mask", &draw_area_wrapper)
+        .def("_ContentAreaInference__infer_mask", &infer_mask_wrapper)
+        .def("_ContentAreaInference__get_points", &get_points_wrapper);
 
     #ifdef PROFILE
     m.def("get_times",

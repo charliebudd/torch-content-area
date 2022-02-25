@@ -5,16 +5,15 @@
 typedef unsigned int uint;
 typedef unsigned char uint8;
 
+enum ContentAreaType{None=0, Circle=1};
 
-struct Area
-{
-    enum{None, Rectangle, Circle} type;
-
-    union
-    {
-        struct { uint y, x, w, h; } rectangle;
-        struct { uint y, x, r; } circle;
-    };
+struct ContentArea
+{   
+    ContentArea(): type(ContentAreaType::None) {};
+    ContentArea(uint x, uint y, uint r): type(ContentAreaType::Circle), x(x), y(y), r(r) {};
+    
+    ContentAreaType type;
+    uint x, y, r;
 };
 
 class ContentAreaInference
@@ -23,8 +22,8 @@ public:
     ContentAreaInference();
     ~ContentAreaInference();
 
-    Area infer_area(uint8* image, const uint image_height, const uint image_width);
-    void draw_area(Area area, uint8* mask, const uint mask_height, const uint mask_width);
+    ContentArea infer_area(uint8* image, const uint image_height, const uint image_width);
+    void draw_area(ContentArea area, uint8* mask, const uint mask_height, const uint mask_width);
     std::vector<std::vector<int>> get_points(uint8* image, const uint image_height, const uint image_width);
 
 private:
