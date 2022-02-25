@@ -21,12 +21,12 @@ ContentAreaInference::~ContentAreaInference()
     cudaFreeHost(m_hst_block);
 }
 
-// Area ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
+// ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
 // {
 //     ### Defined in "infer_area.cu" ###
 // }
 
-// void ContentAreaInference::draw_area(Area area, uint8* mask, const uint mask_height, const uint mask_width)
+// void ContentAreaInference::draw_area(ContentArea area, uint8* mask, const uint mask_height, const uint mask_width)
 // {
 //     ### Defined in "draw_area.cu" ###
 // }

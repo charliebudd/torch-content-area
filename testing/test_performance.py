@@ -2,7 +2,7 @@ import unittest
 
 from utils import TestDataLoader, timer, iou_score
 
-from torchcontentarea import ContentAreaInference
+from torchcontentarea import ContentAreaInference, ContentArea
 
 
 content_area_inference = ContentAreaInference()
@@ -14,7 +14,7 @@ def infer_area_timed(img):
 
 @timer()
 def draw_mask_timed(img):
-    content_area_inference.draw_mask(img, ("Circle", (240, 240, 240)))
+    content_area_inference.draw_mask(img, ContentArea(240, 240, 240))
     return None
 
 @timer()
