@@ -25,6 +25,7 @@ public:
 
     Area infer_area(uint8* image, const uint image_height, const uint image_width);
     void draw_area(Area area, uint8* mask, const uint mask_height, const uint mask_width);
+    std::vector<std::vector<int>> get_points(uint8* image, const uint image_height, const uint image_width);
 
 private:
     uint m_point_count, m_height_samples;
