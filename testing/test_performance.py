@@ -2,7 +2,6 @@ import unittest
 
 from utils import TestDataLoader, timer, iou_score
 
-import torch
 from torchcontentarea import ContentAreaInference
 
 

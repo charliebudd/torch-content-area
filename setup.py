@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 from torch.utils import cpp_extension
 from glob import glob
 
