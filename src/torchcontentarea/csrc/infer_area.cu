@@ -1,10 +1,6 @@
 #include <cuda_runtime.h>
 #include "content_area_inference.cuh"
 
-#include <torch/extension.h>
-
-// #undef PROFILE
-
 #define MAX_CENTER_DIST_X 0.2
 #define MAX_CENTER_DIST_Y 0.2
 #define MIN_RADIUS 0.3
