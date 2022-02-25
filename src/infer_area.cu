@@ -190,6 +190,12 @@ __global__ void check_triples(const uint* g_points, uint* g_point_scores, const 
 
     // Filter out bad circles
     uint score = valid;
+    score &= ax > 1;
+    score &= ax < image_width - 2;
+    score &= bx > 1;
+    score &= bx < image_width - 2;
+    score &= cx > 1;
+    score &= cx < image_width - 2;
     score &= abs(x - 0.5 * image_width) < MAX_CENTER_DIST_X * 0.5 * image_width;
     score &= abs(y - 0.5 * image_height) < MAX_CENTER_DIST_Y * 0.5 * image_height;
     score &= r > (MIN_RADIUS * image_width);
@@ -239,7 +245,7 @@ float distance_score(const uint height_samples, const uint i, const uint j)
 
 void select_final_triple(const uint point_count, const uint* scores, int* indices)
 {
-    float best_score = 0.0f;
+    float best_score = -1.0f;
 
     uint height_samples = point_count / 2;
 
@@ -373,4 +379,35 @@ Area ContentAreaInference::infer_area(uint8* image, const uint image_height, con
     area.circle.r = r;
 
     return area;
+}
+
+std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, const uint image_height, const uint image_width)
+{
+    uint height_gap = image_height / m_height_samples;
+
+    dim3 find_points_grid(2, m_height_samples);
+    dim3 find_points_block(warp_size * warp_count, 1);
+    find_points<warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_points, image_width, image_height, height_gap, m_height_samples);
+
+    dim3 check_triples_grid(m_point_count);
+    dim3 check_triples_block(triangle_size(m_point_count));
+    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_points, m_dev_scores, height_gap, m_point_count, image_height, image_width);
+
+    cudaMemcpy(m_hst_block, m_dev_block, 2 * m_point_count * sizeof(uint), cudaMemcpyDeviceToHost);
+
+    std::vector<int> points_x, points_y, scores;
+
+    for (int i = 0; i < m_point_count; i++)
+    {
+        points_x.push_back(m_hst_points[i]);
+        points_y.push_back(((i % m_height_samples) + 0.5) * height_gap);
+        scores.push_back(m_hst_scores[i]);
+    }
+
+    std::vector<std::vector<int>> result = std::vector<std::vector<int>>();
+    result.push_back(points_x);
+    result.push_back(points_y);
+    result.push_back(scores);
+
+    return result;
 }
