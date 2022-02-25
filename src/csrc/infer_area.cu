@@ -1,7 +1,9 @@
 #include <cuda_runtime.h>
 #include "content_area_inference.cuh"
 
-#undef PROFILE
+#include <torch/extension.h>
+
+// #undef PROFILE
 
 #define MAX_CENTER_DIST_X 0.2
 #define MAX_CENTER_DIST_Y 0.2
@@ -17,6 +19,7 @@ __device__  float normed_euclidean(float r1, float g1, float b1, float r2, float
 template<int warp_count>
 __global__ void find_points(uint8* g_image, uint* g_points, const uint image_width, const uint image_height, const uint height_gap, const uint point_count)
 {
+    __shared__ uint8 s_image_strip[warp_count * 32];
     __shared__ bool s_is_edge[warp_count];
     __shared__ uint s_indicies[warp_count];
 
