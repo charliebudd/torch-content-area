@@ -9,6 +9,6 @@ setup(
     name='torchcontentarea',
     packages=['torchcontentarea'],
     package_dir={'':'src'},
-    ext_modules=[cpp_extension.CUDAExtension('_torchcontentareaext', ext_source_files)],
+    ext_modules=[cpp_extension.CUDAExtension('__torchcontentareaext', ext_source_files)],
     cmdclass={'build_ext': cpp_extension.BuildExtension}
 )

@@ -279,7 +279,7 @@ void select_final_triple(const uint point_count, const uint* scores, int* indice
 #define warp_size 32
 #define warp_count 16
 
-Area ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
+ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
 {
     #ifdef PROFILE
     cudaEvent_t a, b, c, d, e;
@@ -371,13 +371,7 @@ Area ContentAreaInference::infer_area(uint8* image, const uint image_height, con
     ADD_SAMPLE("infer area: choose final points", milliseconds);
     #endif  
 
-    Area area;
-    area.type = Area::Circle;
-    area.circle.y = y;
-    area.circle.x = x;
-    area.circle.r = r;
-
-    return area;
+    return ContentArea(x, y, r);
 }
 
 std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, const uint image_height, const uint image_width)
