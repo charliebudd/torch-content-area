@@ -1,7 +1,8 @@
 # Torch Content Area
 A PyTorch tool kit for segmenting the endoscopic content area in laparoscopy footage. This implementation is based off of that found in ["Detection of circular content area in endoscopic videos"](http://www-itec.uni-klu.ac.at/bib/files/CircleDetection.pdf)
 
-![Build](https://github.com/charliebudd/torch-content-area/actions/workflows/build.yml/badge.svg)
+[![Build Status](https://github.com/charliebudd/torch-content-area/actions/workflows/build.yml/badge.svg)](https://github.com/charliebudd/torch-content-area/actions)
+
 
 ## Installation
 First ensure you have PyTorch installed and the CUDA toolkit is present on your machine, then run...
