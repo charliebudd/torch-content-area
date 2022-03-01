@@ -28,6 +28,24 @@ torch::Tensor draw_area_wrapper(ContentAreaInference &self, torch::Tensor image,
     return mask;
 }
 
+torch::Tensor crop_area_wrapper(ContentAreaInference &self, torch::Tensor src_image, ContentArea area, std::vector<uint> size, const int interpolation_mode)
+{
+    uint src_height = src_image.size(1);
+    uint src_width = src_image.size(2);
+
+    uint dst_height = size[0];
+    uint dst_width = size[1];
+
+    torch::Tensor dst_image = torch::empty({3, dst_height, dst_width}, src_image.options());
+
+    src_image = src_image.contiguous();
+    dst_image = dst_image.contiguous();
+
+    self.crop_area(area, src_image.data_ptr<uint8>(), dst_image.data_ptr<uint8>(), src_width, src_height, dst_width, dst_height, (InterpolationMode)interpolation_mode);
+
+    return dst_image;
+}
+
 torch::Tensor infer_mask_wrapper(ContentAreaInference &self, torch::Tensor image)
 {
     #ifdef PROFILE
@@ -88,6 +106,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def(py::init())
         .def("_ContentAreaInference__infer_area", &infer_area_wrapper)
         .def("_ContentAreaInference__draw_mask", &draw_area_wrapper)
+        .def("_ContentAreaInference__crop_area", &crop_area_wrapper)
         .def("_ContentAreaInference__infer_mask", &infer_mask_wrapper)
         .def("_ContentAreaInference__get_points", &get_points_wrapper);
 
