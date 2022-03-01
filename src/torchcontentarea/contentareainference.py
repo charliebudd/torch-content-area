@@ -8,7 +8,6 @@ class InterpolationMode(IntEnum):
     """A tag to specify the type of interpolation when cropping"""
     NEAREST = 0
     BILINEAR = 1
-    BICUBIC = 2
 
 
 class ContentAreaType(IntEnum):
