@@ -26,7 +26,12 @@ ContentAreaInference::~ContentAreaInference()
 //     ### Defined in "infer_area.cu" ###
 // }
 
-// void ContentAreaInference::draw_area(ContentArea area, uint8* mask, const uint mask_height, const uint mask_width)
+// void ContentAreaInference::draw_area(const ContentArea area, uint8* mask, const uint mask_height, const uint mask_width)
 // {
 //     ### Defined in "draw_area.cu" ###
+// }
+
+// void ContentAreaInference::crop_area(const ContentArea area, const uint8* src_image, uint8* dst_image, const uint src_width, const uint src_height, const uint dst_width, const uint dst_height, const InterpolationMode interpolation_mode)
+// {
+//     ### Defined in "crop_area.cu" ###
 // }
