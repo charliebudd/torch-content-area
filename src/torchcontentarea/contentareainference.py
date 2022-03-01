@@ -1,11 +1,17 @@
 import torch
-from enum import Enum
+from enum import IntEnum
 from typing import Sequence
 
 import __torchcontentareaext as __ext
 
+class InterpolationMode(IntEnum):
+    """A tag to specify the type of interpolation when cropping"""
+    NEAREST = 0
+    BILINEAR = 1
+    BICUBIC = 2
 
-class ContentAreaType(Enum):
+
+class ContentAreaType(IntEnum):
     """A tag to specify the type of content area"""
     NONE = 0
     CIRCLE = 1
@@ -51,9 +57,9 @@ class ContentAreaInference(__ext.ContentAreaInference):
         """Returns a binary mask for the provided content area discription"""
         return self.__draw_mask(image, area)
 
-    def crop_to_area(self, image: torch.Tensor, area: ContentArea, size: Sequence[int]) -> torch.Tensor:
+    def crop_area(self, image: torch.Tensor, area: ContentArea, size: Sequence[int], interpolation_mode: InterpolationMode=InterpolationMode.BILINEAR) -> torch.Tensor:
         """Crops and resizes the image to within the provided content area discription"""
-        return self.__crop_to_area(image, area, size)
+        return self.__crop_area(image, area, size, int(interpolation_mode))
 
     def get_points(self, image: torch.Tensor) -> Sequence[Sequence[int]]:
         """Returns a list of candidate border points, mainly for debugging purposes"""
