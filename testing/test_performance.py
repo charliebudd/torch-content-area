@@ -2,7 +2,7 @@ import unittest
 
 from utils import TestDataLoader, timer, iou_score
 
-from torchcontentarea import ContentAreaInference, ContentArea
+from torchcontentarea import ContentAreaInference, ContentArea, InterpolationMode
 
 
 content_area_inference = ContentAreaInference()
@@ -15,6 +15,17 @@ def infer_area_timed(img):
 @timer()
 def draw_mask_timed(img):
     content_area_inference.draw_mask(img, ContentArea(240, 240, 240))
+    return None
+
+@timer()
+def crop_area_timed(img):
+    content_area_inference.crop_area(img, ContentArea(240, 240, 240), (256, 512), InterpolationMode.BILINEAR)
+    return None
+
+@timer()
+def infer_and_crop_area_timed(img):
+    area = content_area_inference.infer_area(img)
+    content_area_inference.crop_area(img, area, (256, 512), InterpolationMode.BILINEAR)
     return None
 
 @timer()
@@ -66,6 +77,44 @@ class TestPerformance(unittest.TestCase):
 
         print(f'')
         print(f'draw_mask...')
+        print(f'Avg Time: {avg_time:.3f}ms')
+
+    def test_crop_area(self):
+      
+        dataloader = TestDataLoader()
+
+        times = []
+
+        for img, seg in dataloader:
+            img, seg = img.cuda(), seg.cuda()
+
+            time, _ = crop_area_timed(img)
+
+            times.append(time)
+            
+        avg_time = sum(times) / len(times)
+
+        print(f'')
+        print(f'crop_area...')
+        print(f'Avg Time: {avg_time:.3f}ms')
+
+    def test_infer_and_crop_area_timed(self):
+      
+        dataloader = TestDataLoader()
+
+        times = []
+
+        for img, seg in dataloader:
+            img, seg = img.cuda(), seg.cuda()
+
+            time, _ = infer_and_crop_area_timed(img)
+
+            times.append(time)
+            
+        avg_time = sum(times) / len(times)
+
+        print(f'')
+        print(f'infer_area and crop_area...')
         print(f'Avg Time: {avg_time:.3f}ms')
 
     def test_infer_area_and_draw_mask(self):
