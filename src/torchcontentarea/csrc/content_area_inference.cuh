@@ -6,7 +6,8 @@ typedef unsigned int uint;
 typedef unsigned char uint8;
 
 enum ContentAreaType{None=0, Circle=1};
-enum InterpolationMode{Nearest=0, Bilinear=1, Bicubic=2};
+
+enum InterpolationMode{Nearest=0, Bilinear=1};
 
 struct ContentArea
 {   

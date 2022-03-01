@@ -127,8 +127,5 @@ void ContentAreaInference::crop_area(const ContentArea area, const uint8* src_im
         case(InterpolationMode::Bilinear): 
             crop_resize_bilinear<<<grid, block>>>(src_image, dst_image, src_width, src_height, dst_width, dst_height, x, y, w, h); 
             break;
-        case(InterpolationMode::Bicubic): 
-            // crop_resize_bicubic<<<grid, block>>>(src_image, dst_image, src_width, src_height, dst_width, dst_height, x, y, w, h); 
-            break;
     }
 }
