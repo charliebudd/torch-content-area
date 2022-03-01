@@ -9,13 +9,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      # - run: pwd
-      # - run: ls
-      # - run: ls torch-content-area
-      - uses: ./.github/actions/build-cu11.3
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      - name: Build package
+        uses: ./.github/actions/build-cu11.3
+
       - name: Publish package to TestPyPI
-      - uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
