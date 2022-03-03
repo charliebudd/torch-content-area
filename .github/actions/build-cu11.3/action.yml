@@ -1,6 +1,0 @@
-name: 'Build cu11.3'
-description: 'Build package for cuda 11.3'
-runs:
-  using: 'docker'
-  image: 'Dockerfile'
-  
