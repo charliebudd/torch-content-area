@@ -15,8 +15,8 @@ jobs:
         pytorch-versions: "[1.9, '1.10']"
         cuda-versions: "[10.2, 11.3]"
 
-  publish-wheels:
-    name: Publish Wheels
+  publish-wheels-to-testpypi:
+    name: Publish Wheels To TestPyPI
     runs-on: ubuntu-latest
     needs: build-wheels
     steps:
@@ -32,4 +32,15 @@ jobs:
           user: __token__
           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
           repository_url: https://test.pypi.org/legacy/
+
+  test-testpypi-release:
+    name: Test TestPyPi Release
+    needs: publish-wheels-to-testpypi
+    uses: ./.github/workflows/test.yml
+    with:
+      pypi-index: "https://test.pypi.org/simple/"
+      python-versions: "[3.6, 3.7, 3.8]"
+      pytorch-versions: "[1.9, '1.10']"
+      cuda-versions: "[10.2, 11.3]"
+
           
