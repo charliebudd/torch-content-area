@@ -7,7 +7,7 @@ ext_source_files = glob(ext_src_dir + "*.cpp") + glob(ext_src_dir + "*.cu")
 
 setup(
     name="torchcontentarea",
-    version=0.2,
+    version="0.2.3",
     description="A PyTorch tool kit for segmenting the endoscopic content area in laparoscopy footage.",
     author="Charlie Budd",
     author_email="charles.budd@kcl.ac.uk",

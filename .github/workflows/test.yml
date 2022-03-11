@@ -1,0 +1,48 @@
+name: Test Release
+
+on:
+  workflow_call:
+    inputs:
+      pypi-index:
+        type: string
+        default: "https://test.pypi.org/simple/"
+      python-versions:
+        type: string
+        default: "[3.6, 3.7, 3.8]"
+      pytorch-versions:
+        type: string
+        default: "[1.9, '1.10']"
+      cuda-versions:
+        type: string
+        default: "[10.2, 11.3]"
+
+jobs:
+  build-wheels:
+    name: Build Wheels
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ${{ fromJson(inputs.python-versions) }}
+        pytorch: ${{ fromJson(inputs.pytorch-versions) }}
+        cuda: ${{ fromJson(inputs.cuda-versions) }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+        
+      - name: Install Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install PyTorch
+        run: python -m pip install torch==${{ matrix.pytorch }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda }} | sed 's/\.//')/torch_stable.html
+
+      - name: Install Test Requirements
+        run: python -m pip numpy pillow
+        
+      - name: Install torchcontentarea
+        run: python -m pip install torchcontentarea -i https://test.pypi.org/simple/
+
+      - name: Run Tests
+        run: python testing/test_performance.py
