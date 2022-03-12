@@ -15,10 +15,22 @@ jobs:
         pytorch-versions: "[1.9, '1.10']"
         cuda-versions: "[10.2, 11.3]"
 
+  
+  test-wheels-locally:
+    name: Test Wheels Locally
+    needs: build-wheels
+    uses: ./.github/workflows/test.yml
+    with:
+      local-wheels: true
+      wheel-location: final-wheels
+      python-versions: "[3.6, 3.7, 3.8]"
+      pytorch-versions: "[1.9, '1.10']"
+      cuda-versions: "[10.2, 11.3]"
+
   publish-wheels-to-testpypi:
     name: Publish Wheels To TestPyPI
     runs-on: ubuntu-latest
-    needs: build-wheels
+    needs: test-wheels-locally
     steps:
       - name: Download Cached Wheels
         uses: actions/download-artifact@v3
@@ -38,9 +50,8 @@ jobs:
     needs: publish-wheels-to-testpypi
     uses: ./.github/workflows/test.yml
     with:
-      pypi-index: "https://test.pypi.org/simple/"
+      local-wheels: false
+      wheel-location: https://test.pypi.org/simple/
       python-versions: "[3.6, 3.7, 3.8]"
       pytorch-versions: "[1.9, '1.10']"
       cuda-versions: "[10.2, 11.3]"
-
-          
