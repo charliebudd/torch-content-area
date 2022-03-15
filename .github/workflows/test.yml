@@ -20,9 +20,9 @@ on:
         default: "[10.2, 11.3]"
 
 jobs:
-  build-wheels:
-    name: Build Wheels
-    runs-on: self-hosted
+  test-release:
+    name: Test Release
+    runs-on: [self-hosted, Linux, X64, 'cu${{ matrix.cuda }}', 'py${{ matrix.python }}', 'pt${{ matrix.pytorch }}']
     strategy:
       fail-fast: false
       matrix:
@@ -33,20 +33,19 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v2
         
-      - name: Install Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python }}
-
-      - name: Install PyTorch
-        run: python${{ matrix.python }} -m pip install torch==${{ matrix.pytorch }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda }} | sed 's/\.//')/torch_stable.html
+      - name: Environment Check
+        run: |
+          python -V
+          python -c "import torch; print(f'PyTorch {torch.__version__}')"
 
       - name: Install Test Requirements
-        run: python${{ matrix.python }} -m pip install numpy pillow
+        run: |
+          python -m pip install -U --force-reinstall pip
+          python -m pip install numpy pillow
         
       - name: Install torchcontentarea From PyPI Index
         if: ${{ !inputs.local-wheels }}
-        run: python${{ matrix.python }} -m pip install --force-reinstall torchcontentarea -i ${{ inputs.wheel-location }}
+        run: python -m pip install --force-reinstall torchcontentarea -i ${{ inputs.wheel-location }}
         
       - name: Download Cached Wheels
         if: ${{ inputs.local-wheels }}
@@ -57,7 +56,7 @@ jobs:
           
       - name: Install torchcontentarea From Chached Wheels
         if: ${{ inputs.local-wheels }}
-        run: python${{ matrix.python }} -m pip install ${{ inputs.wheel-location }}/torchcontentarea*cp$(echo ${{ matrix.python }} | sed 's/\.//')*.whl
+        run: python -m pip install ${{ inputs.wheel-location }}/torchcontentarea*cp$(echo ${{ matrix.python }} | sed 's/\.//')*.whl
 
       - name: Run Tests
-        run: python${{ matrix.python }} testing/test_performance.py
+        run: python testing/test_performance.py
