@@ -15,7 +15,6 @@ jobs:
         pytorch-versions: "[1.9, '1.10']"
         cuda-versions: "[10.2, 11.3]"
 
-  
   test-wheels-locally:
     name: Test Wheels Locally
     needs: build-wheels
