@@ -9,11 +9,7 @@ jobs:
 
   build-wheels:
     name: Build Wheels
-    uses: charliebudd/torch-extention-builder/.github/workflows/build-pytorch-extention-wheels.yml@main
-    with:
-        python-versions: "[3.6, 3.7, 3.8]"
-        pytorch-versions: "[1.9, '1.10']"
-        cuda-versions: "[10.2, 11.3]"
+    uses: charliebudd/torch-extension-builder/.github/workflows/build-pytorch-extension-wheels.yml@v0.1
 
   test-wheels-locally:
     name: Test Wheels Locally
@@ -22,8 +18,8 @@ jobs:
     with:
       local-wheels: true
       wheel-location: final-wheels
-      python-versions: "[3.6, 3.7, 3.8]"
-      pytorch-versions: "[1.9, '1.10']"
+      python-versions: "[3.6, 3.7, 3.8, 3.9]"
+      pytorch-versions: "[1.9, '1.10', 1.11]"
       cuda-versions: "[10.2, 11.3]"
 
   publish-wheels-to-testpypi:
@@ -51,6 +47,6 @@ jobs:
     with:
       local-wheels: false
       wheel-location: https://test.pypi.org/simple/
-      python-versions: "[3.6, 3.7, 3.8]"
-      pytorch-versions: "[1.9, '1.10']"
+      python-versions: "[3.6, 3.7, 3.8, 3.9]"
+      pytorch-versions: "[1.9, '1.10', 1.11]"
       cuda-versions: "[10.2, 11.3]"
