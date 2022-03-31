@@ -5,6 +5,11 @@ from glob import glob
 ext_src_dir = "src/torchcontentarea/csrc/"
 ext_source_files = glob(ext_src_dir + "*.cpp") + glob(ext_src_dir + "*.cu")
 
+compile_args = {
+    'cxx': ['-g0'],
+    'nvcc': ['-O2']
+}
+
 setup(
     name="torchcontentarea",
     version="0.2.5",
@@ -15,6 +20,6 @@ setup(
     license="MIT",
     packages=["torchcontentarea"],
     package_dir={"":"src"},
-    ext_modules=[cpp_extension.CUDAExtension("__torchcontentareaext", ext_source_files)],
+    ext_modules=[cpp_extension.CUDAExtension("__torchcontentareaext", ext_source_files, extra_compile_args=compile_args)],
     cmdclass={"build_ext": cpp_extension.BuildExtension}
 )
