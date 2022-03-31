@@ -1,12 +1,16 @@
 name: Build
 
-on: 
+on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
-      - devops
-
+      - main
+    tags:
+      - 'v*'
+      
 jobs:
-
   build-wheels:
     name: Build Wheels
     uses: charliebudd/torch-extension-builder/.github/workflows/build-pytorch-extension-wheels.yml@v0.1
