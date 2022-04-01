@@ -47,12 +47,12 @@ jobs:
         run: |
           ENV=../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}
           if [ -d "$ENV" ]; then
+            . $ENV/bin/activate
+          else
             python -m venv $ENV
             . $ENV/bin/activate
             python -m pip install -U --force-reinstall pip
             python -m pip install numpy pillow torch==${{ matrix.pytorch }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda }} | sed 's/\.//')/torch_stable.html
-          else
-            . $ENV/bin/activate
           fi
 
           python -V
