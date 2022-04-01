@@ -30,10 +30,10 @@ jobs:
         pytorch: ${{ fromJson(inputs.pytorch-versions) }}
         cuda: ${{ fromJson(inputs.cuda-versions) }}
         exclude:
-          - pytorch-version: 1.9
-            cuda-version: 11.3 
-          - python-version: 3.6
-            pytorch-version: 1.11
+          - pytorch: 1.9
+            cuda: 11.3 
+          - python: 3.6
+            pytorch: 1.11
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
