@@ -23,13 +23,17 @@ jobs:
   test-release:
     name: Test Release
     runs-on: [self-hosted, Linux, X64, gpu]
-    # runs-on: [self-hosted, Linux, X64, 'cu${{ matrix.cuda }}', 'py${{ matrix.python }}', 'pt${{ matrix.pytorch }}']
     strategy:
       fail-fast: false
       matrix:
         python: ${{ fromJson(inputs.python-versions) }}
         pytorch: ${{ fromJson(inputs.pytorch-versions) }}
         cuda: ${{ fromJson(inputs.cuda-versions) }}
+        exclude:
+          - pytorch-version: 1.9
+            cuda-version: 11.3 
+          - python-version: 3.6
+            pytorch-version: 1.11
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
@@ -41,8 +45,18 @@ jobs:
 
       - name: Install Test Requirements
         run: |
-          python -m pip install -U --force-reinstall pip
-          python -m pip install numpy pillow torch==${{ matrix.pytorch }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda }} | sed 's/\.//')/torch_stable.html
+          ENV=../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}
+          if [ -d "$ENV" ]; then
+            python -m venv $ENV
+            . $ENV/bin/activate
+            python -m pip install -U --force-reinstall pip
+            python -m pip install numpy pillow torch==${{ matrix.pytorch }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda }} | sed 's/\.//')/torch_stable.html
+          else
+            . $ENV/bin/activate
+          fi
+
+          python -V
+          pip show torch
         
       - name: Install torchcontentarea From PyPI Index
         if: ${{ !inputs.local-wheels }}
