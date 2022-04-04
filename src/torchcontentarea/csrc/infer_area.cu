@@ -200,6 +200,28 @@ __global__ void check_triples(const uint* g_points, uint* g_point_scores, const 
     score &= r > (MIN_RADIUS * image_width);
     score &= r < (MAX_RADIUS * image_width);
 
+    if (score)
+    {
+        score = 0;
+
+        for (int i=0; i < point_count; i++)
+        {
+            float px = s_points[i];
+            float py = height_gap * (0.5  + (i % (point_count / 2)));
+
+            float diff_x = (px - x);
+            float diff_y = (py - y);
+
+            float diff = diff_x * diff_x + diff_y * diff_y;
+            uint d = abs(diff - r * r);
+
+            if (d < 2000)
+            {
+                score += 2000 - d;
+            }
+        }
+    }
+
     // Warp reduction
     #pragma unroll
     for (int offset = 16; offset > 0; offset /= 2)
