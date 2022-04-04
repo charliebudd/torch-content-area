@@ -1,26 +1,26 @@
 import unittest
 
 from utils import TestDataset, TestDataLoader, timed, iou_score
-
 from torchcontentarea import ContentAreaInference
-
-dataset = TestDataset()
-dataloader = TestDataLoader(dataset)
-content_area_inference = ContentAreaInference()
 
 class TestPerformance(unittest.TestCase):
                             
+    def __init__(self, methodName: str = ...) -> None:
+        super().__init__(methodName)
+        self.dataloader = TestDataLoader(TestDataset())
+        self.content_area_inference = ContentAreaInference()
+
     def test_infer_mask(self):
 
         area_times = []
         mask_times = []
         scores = []
 
-        for img, seg in dataloader:
+        for img, seg in self.dataloader:
             img, seg = img.cuda(), seg.cuda()
 
-            area_time, _ = timed(lambda x: content_area_inference.infer_area(x), img)
-            mask_time, mask = timed(lambda x: content_area_inference.infer_mask(x), img)
+            area_time, _ = timed(lambda x: self.content_area_inference.infer_area(x), img)
+            mask_time, mask = timed(lambda x: self.content_area_inference.infer_mask(x), img)
 
             score = iou_score(mask, seg)
 
