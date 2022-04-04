@@ -388,8 +388,10 @@ std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, con
 
     cudaMemcpy(m_hst_block, m_dev_block, 2 * m_point_count * sizeof(uint), cudaMemcpyDeviceToHost);
 
-    std::vector<int> points_x, points_y, scores;
+    int indices[3];
+    select_final_triple(m_point_count, m_hst_scores, indices);
 
+    std::vector<int> points_x, points_y, scores;
     for (int i = 0; i < m_point_count; i++)
     {
         points_x.push_back(m_hst_points[i]);
@@ -397,10 +399,17 @@ std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, con
         scores.push_back(m_hst_scores[i]);
     }
 
+    std::vector<int> final_indices;
+    for (int i = 0; i < 3; i++)
+    {
+        final_indices.push_back(indices[i]);
+    }
+
     std::vector<std::vector<int>> result = std::vector<std::vector<int>>();
     result.push_back(points_x);
     result.push_back(points_y);
     result.push_back(scores);
+    result.push_back(final_indices);
 
     return result;
 }
