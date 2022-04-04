@@ -60,10 +60,6 @@ def iou_score(a, b):
 ########################
 # Data handling...
 
-class TestDataLoader(DataLoader):
-    def __init__(self) -> None:
-        super().__init__(dataset=TestDataset(), batch_size=None, num_workers=10, pin_memory=True)
-
 class TestDataset(Dataset):
     def __init__(self) -> None:
         super().__init__()
@@ -81,3 +77,7 @@ class TestDataset(Dataset):
         img, seg = self.img_paths[index], self.seg_paths[index]
         img, seg = tuple(map(lambda x: torch.from_numpy(np.array(Image.open(x))), (img, seg)))
         return img.permute(2, 0, 1), seg.unsqueeze(0)
+
+class TestDataLoader(DataLoader):
+    def __init__(self, dataset=TestDataset(), shuffle=False) -> None:
+        super().__init__(dataset=dataset, batch_size=None, num_workers=10, pin_memory=True, shuffle=shuffle)
