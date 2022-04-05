@@ -6,16 +6,15 @@
 #define MIN_RADIUS 0.2
 #define MAX_RADIUS 0.6
 
-__device__  float normed_euclidean(float r1, float g1, float b1, float r2, float g2, float b2)
+__device__  float normed_euclidean(float* a, float* b)
 {
     #define EUCLID_NORM 441.67f // max possible value... sqrt(3 * 255 ^ 2)
-    return sqrt((r1 - r2) * (r1 - r2) + (g1 - g2) * (g1 - g2) + (b1 - b2) * (b1 - b2)) / EUCLID_NORM;
+    return sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2])) / EUCLID_NORM;
 }
 
 template<int warp_count>
 __global__ void find_points(uint8* g_image, uint* g_points, const uint image_width, const uint image_height, const uint height_gap, const uint point_count)
 {
-    __shared__ uint8 s_image_strip[warp_count * 32];
     __shared__ bool s_is_edge[warp_count];
     __shared__ uint s_indicies[warp_count];
 
@@ -28,42 +27,47 @@ __global__ void find_points(uint8* g_image, uint* g_points, const uint image_wid
 
     uint warp_index = threadIdx.x >> 5;
     uint lane_index = threadIdx.x & 31;
-    uint neighbour_offset = flip ? -2 : 2;
 
-    float home_r = g_image[image_x + (image_y + 0) * image_width + 0 * image_width * image_height] * 2.0f
-                + g_image[image_x + (image_y + 1) * image_width + 0 * image_width * image_height]
-                + g_image[image_x + (image_y - 1) * image_width + 0 * image_width * image_height];
+    float image_patch[3][3][3];
 
-    float home_g = g_image[image_x + (image_y + 0) * image_width + 1 * image_width * image_height] * 2.0f
-                + g_image[image_x + (image_y + 1) * image_width + 1 * image_width * image_height]
-                + g_image[image_x + (image_y - 1) * image_width + 1 * image_width * image_height];
+    #pragma unroll
+    for (int c = 0; c < 3; c++)
+    {
+        #pragma unroll
+        for (int x = 0; x < 3; x++)
+        {
+            #pragma unroll
+            for (int y = 0; y < 3; y++)
+            {
+                image_patch[x][y][c] = g_image[image_x + (flip ? -x : x) + (image_y + (y - 1)) * image_width + c * image_width * image_height];
+            }
+        }
+    }
 
-    float home_b = g_image[image_x + (image_y + 0) * image_width + 2 * image_width * image_height] * 2.0f
-                + g_image[image_x + (image_y + 1) * image_width + 2 * image_width * image_height]
-                + g_image[image_x + (image_y - 1) * image_width + 2 * image_width * image_height];
+    float a[3];
+    float b[3];
 
-    float neighbour_r = g_image[image_x + neighbour_offset + (image_y + 0) * image_width + 0 * image_width * image_height] * 2.0f
-                    + g_image[image_x + neighbour_offset + (image_y + 1) * image_width + 0 * image_width * image_height]
-                    + g_image[image_x + neighbour_offset + (image_y - 1) * image_width + 0 * image_width * image_height];
+    #pragma unroll
+    for (int c = 0; c < 3; c++)
+    {
+        a[c] = (image_patch[0][0][c] + 2 * image_patch[0][1][c] + image_patch[0][2][c]) / 4;
+        b[c] = (image_patch[2][0][c] + 2 * image_patch[2][1][c] + image_patch[2][2][c]) / 4;
+    }
 
-    float neighbour_g = g_image[image_x + neighbour_offset + (image_y + 0) * image_width + 1 * image_width * image_height] * 2.0f
-                    + g_image[image_x + neighbour_offset + (image_y + 1) * image_width + 1 * image_width * image_height]
-                    + g_image[image_x + neighbour_offset + (image_y - 1) * image_width + 1 * image_width * image_height];
+    float x_grad = normed_euclidean(a, b);
 
-    float neighbour_b = g_image[image_x + neighbour_offset + (image_y + 0) * image_width + 2 * image_width * image_height] * 2.0f
-                    + g_image[image_x + neighbour_offset + (image_y + 1) * image_width + 2 * image_width * image_height]
-                    + g_image[image_x + neighbour_offset + (image_y - 1) * image_width + 2 * image_width * image_height];
+    #pragma unroll
+    for (int c = 0; c < 3; c++)
+    {
+        a[c] = (image_patch[0][0][c] + 2 * image_patch[1][0][c]+ image_patch[2][0][c]) / 4;
+        b[c] = (image_patch[0][2][c] + 2 * image_patch[1][2][c]+ image_patch[2][2][c]) / 4;
+    }
 
-    float edge_strength = normed_euclidean(
-        home_r / 4.0f,
-        home_g / 4.0f,
-        home_b / 4.0f,
-        neighbour_r / 4.0f,
-        neighbour_g / 4.0f,
-        neighbour_b / 4.0f
-    );
+    float y_grad = normed_euclidean(a, b);
 
-    bool is_edge = edge_strength > 0.049;
+    float grad = sqrt(x_grad * x_grad + y_grad * y_grad);
+
+    bool is_edge = grad > 0.040;
 
     // ######################################
     // Finding first Edge above threshold...
