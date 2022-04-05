@@ -1,9 +1,9 @@
 #include <cuda_runtime.h>
 #include "content_area_inference.cuh"
 
-#define MAX_CENTER_DIST_X 0.2
-#define MAX_CENTER_DIST_Y 0.2
-#define MIN_RADIUS 0.3
+#define MAX_CENTER_DIST_X 0.3
+#define MAX_CENTER_DIST_Y 0.3
+#define MIN_RADIUS 0.2
 #define MAX_RADIUS 0.6
 
 __device__  float normed_euclidean(float r1, float g1, float b1, float r2, float g2, float b2)
@@ -64,7 +64,6 @@ __global__ void find_points(uint8* g_image, uint* g_points, const uint image_wid
     );
 
     bool is_edge = edge_strength > 0.049;
-
 
     // ######################################
     // Finding first Edge above threshold...
@@ -283,7 +282,9 @@ void select_final_triple(const uint point_count, const uint* scores, int* indice
                 float score_k = scores[k];
 
                 float dist_score = distance_score(height_samples, i, j) + distance_score(height_samples, i, k) + distance_score(height_samples, j, k);
-                float score = dist_score * (score_i + score_j + score_k);
+                float score = (score_i + score_j + score_k);
+
+                score = score * (dist_score + 15);
 
                 if (score > best_score)
                 {
