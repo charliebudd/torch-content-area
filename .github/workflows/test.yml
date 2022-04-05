@@ -74,4 +74,4 @@ jobs:
         run: python -m pip install ${{ inputs.wheel-location }}/torchcontentarea*cp$(echo ${{ matrix.python }} | sed 's/\.//')*.whl
 
       - name: Run Tests
-        run: python testing/test_performance.py
+        run: python -m unittest discover -s testing
