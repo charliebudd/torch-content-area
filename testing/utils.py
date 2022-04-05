@@ -98,7 +98,7 @@ class DummyDataset(Dataset):
         center = torch.Tensor([area_y, area_x]).reshape((2, 1, 1))
 
         mask = torch.where(torch.linalg.norm(abs(coords - center), dim=0) > area_r, 0, 1).unsqueeze(0)
-        img = mask * torch.randint(0, 255, (3, self.height, self.width))
+        img = 255 * mask.expand((3, self.height, self.width))
 
         img = img.to(dtype=torch.uint8).contiguous()
         mask = mask.to(dtype=torch.uint8).contiguous()
