@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import glob
 import numpy as np
 from PIL import Image
@@ -47,6 +46,10 @@ def timer(units='ms'):
         return wrapper
     return decorator
 
+@timer()
+def timed(func, arg):
+    return func(arg)
+
 ########################
 # Scoring...
 
@@ -57,12 +60,50 @@ def iou_score(a, b):
     iou = (intersection + SMOOTH) / (union + SMOOTH)
     return iou.item()
 
+def parameter_errors(a, b):
+    a_center = np.array([a[0], a[1]])
+    a_radius = a[2]
+    
+    b_center = np.array([b[0], b[1]])
+    b_radius = b[2]
+
+    center_error = np.linalg.norm(a_center - b_center)
+    radius_error = abs(a_radius - b_radius)
+
+    return center_error, radius_error
+
 ########################
 # Data handling...
 
-class TestDataLoader(DataLoader):
+class DummyDataset(Dataset):
     def __init__(self) -> None:
-        super().__init__(dataset=TestDataset(), batch_size=None, num_workers=10, pin_memory=True)
+        super().__init__()
+
+        self.width = 854
+        self.height = 480
+
+        self.areas = [
+            (400, 250, 360),
+            (340, 200, 370),
+            (450, 230, 250),
+        ]
+
+    def __len__(self):
+        return len(self.areas)
+
+    def __getitem__(self, index):
+        area_x, area_y, area_r = self.areas[index]
+
+        coords = torch.stack(torch.meshgrid(torch.arange(0, self.height), torch.arange(0, self.width)))
+        center = torch.Tensor([area_y, area_x]).reshape((2, 1, 1))
+
+        mask = torch.where(torch.linalg.norm(abs(coords - center), dim=0) > area_r, 0, 1).unsqueeze(0)
+        img = 255 * mask.expand((3, self.height, self.width))
+
+        img = img.to(dtype=torch.uint8).contiguous()
+        mask = mask.to(dtype=torch.uint8).contiguous()
+
+        return img, mask, (area_x, area_y, area_r)
 
 class TestDataset(Dataset):
     def __init__(self) -> None:
@@ -81,3 +122,7 @@ class TestDataset(Dataset):
         img, seg = self.img_paths[index], self.seg_paths[index]
         img, seg = tuple(map(lambda x: torch.from_numpy(np.array(Image.open(x))), (img, seg)))
         return img.permute(2, 0, 1), seg.unsqueeze(0)
+
+class TestDataLoader(DataLoader):
+    def __init__(self, dataset, shuffle=False) -> None:
+        super().__init__(dataset=dataset, batch_size=None, num_workers=10, pin_memory=True, shuffle=shuffle)
