@@ -1,0 +1,44 @@
+name: Build
+
+on: push
+
+jobs: 
+  test-release:
+    name: Test Release
+    runs-on: [self-hosted, Linux, X64, gpu]
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [3.8]
+        pytorch: [1.11]
+        cuda: [10.2, 11.3]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install Test Requirements
+        run: |
+          ENV=../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}
+          if [ -d "$ENV" ]; then
+            . $ENV/bin/activate
+          else
+            python -m venv $ENV
+            . $ENV/bin/activate
+            python -m pip install -U --force-reinstall pip
+            python -m pip install numpy pillow torch==${{ matrix.pytorch }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda }} | sed 's/\.//')/torch_stable.html
+          fi
+
+          python -V
+          pip show torch
+        
+      - name: Install torchcontentarea
+        run: python setup.py install
+
+      - name: Run Tests
+        run: python -m unittest discover -s testing
+        
