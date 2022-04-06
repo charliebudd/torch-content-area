@@ -1,4 +1,5 @@
 import unittest
+import torch
 
 from utils import TestDataset, TestDataLoader, timed, iou_score
 from torchcontentarea import ContentAreaInference
@@ -34,7 +35,10 @@ class TestPerformance(unittest.TestCase):
         miss_percentage = 100 * sum(map(lambda x: x < 0.99, scores)) / len(scores)
         bad_miss_percentage = 100 * sum(map(lambda x: x < 0.95, scores)) / len(scores)
 
+        gpu_name = torch.cuda.get_device_name()
+
         print(f'Performance Results...')
+        print(f'- Device: {gpu_name}')
         print(f'- Avg Time (Infer Area Only): {avg_area_time:.3f}ms')
         print(f'- Avg Time (Infer Area and Draw Mask): {avg_mask_time:.3f}ms')
         print(f'- Avg Score (IoU): {avg_score:.3f}')
