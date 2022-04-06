@@ -6,6 +6,8 @@ jobs:
   test-release:
     name: Test Release
     runs-on: [self-hosted, Linux, X64, gpu]
+    outputs:
+      results: ${{ steps.run-tests.outputs.results }}
     strategy:
       fail-fast: false
       matrix:
@@ -39,6 +41,13 @@ jobs:
       - name: Install torchcontentarea
         run: python setup.py install
 
-      - name: Run Tests
-        run: python -m unittest discover -s testing
-        
+      - id: run-tests
+        name: Run Tests
+        run: |
+          OUTPUT=$(python -m unittest discover -s testing)
+          echo "::set-output name=results::$OUTPUT"   
+  print-results:
+    runs-on: ubuntu-latest
+    needs: test-release
+    steps:
+      - run: echo ${{needs.test-release.outputs.results}}
