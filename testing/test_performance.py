@@ -13,24 +13,20 @@ class TestPerformance(unittest.TestCase):
 
     def test_infer_mask(self):
 
-        area_times = []
-        mask_times = []
+        times = []
         scores = []
 
         for img, seg in self.dataloader:
             img, seg = img.cuda(), seg.cuda()
 
-            area_time, _ = timed(lambda x: self.content_area_inference.infer_area(x), img)
-            mask_time, mask = timed(lambda x: self.content_area_inference.infer_mask(x), img)
+            time, mask = timed(lambda x: self.content_area_inference.infer_mask(x), img)
 
             score = iou_score(mask, seg)
 
-            area_times.append(area_time)
-            mask_times.append(mask_time)
+            times.append(time)
             scores.append(score)
             
-        avg_area_time = sum(area_times) / len(area_times)
-        avg_mask_time = sum(mask_times) / len(mask_times)
+        avg_time = sum(times) / len(times)
         avg_score = sum(scores) / len(scores)
         miss_percentage = 100 * sum(map(lambda x: x < 0.99, scores)) / len(scores)
         bad_miss_percentage = 100 * sum(map(lambda x: x < 0.95, scores)) / len(scores)
@@ -38,15 +34,12 @@ class TestPerformance(unittest.TestCase):
         gpu_name = torch.cuda.get_device_name()
 
         print(f'Performance Results...')
-        print(f'- Device: {gpu_name}')
-        print(f'- Avg Time (Infer Area Only): {avg_area_time:.3f}ms')
-        print(f'- Avg Time (Infer Area and Draw Mask): {avg_mask_time:.3f}ms')
+        print(f'- Avg Time ({gpu_name}): {avg_time:.3f}ms')
         print(f'- Avg Score (IoU): {avg_score:.3f}')
         print(f'- Misses (IoU < 0.99): {miss_percentage:.1f}%')
         print(f'- Bad Misses (IoU < 0.95): {bad_miss_percentage:.1f}%')
 
-        self.assertTrue(avg_area_time < 0.3)
-        self.assertTrue(avg_mask_time < 0.4)
+        self.assertTrue(avg_time < 0.3)
         self.assertTrue(avg_score > 0.98)
         self.assertTrue(miss_percentage < 10.0)
         self.assertTrue(bad_miss_percentage < 5.0)
