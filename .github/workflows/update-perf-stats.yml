@@ -1,7 +1,17 @@
 name: Build
 
-on: push
-
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        default: "3.9"
+      pytorch-version:
+        type: string
+        default: "1.11"
+      cuda-version:
+        type: string
+        default: "11.3"
 jobs: 
   update-readme:
     name: Test Release
@@ -9,9 +19,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: [3.9]
-        pytorch: [1.11]
-        cuda: [11.3]
+        python: ${{ inputs.python-version }}
+        pytorch: ${{ inputs.pytoch-version }}
+        cuda: ${{ inputs.cuda-version }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
@@ -19,18 +29,18 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v3
         with:
-          python-version: ${{ matrix.python }}
+          python-version: ${{ inputs.python-version }}
 
       - name: Install Test Requirements
         run: |
-          ENV=../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}
+          ENV=../.venv-${{ inputs.python-version }}-${{ inputs.pytoch-version }}-${{ inputs.cuda-version }}
           if [ -d "$ENV" ]; then
             . $ENV/bin/activate
           else
             python -m venv $ENV
             . $ENV/bin/activate
             python -m pip install -U --force-reinstall pip
-            python -m pip install numpy pillow torch==${{ matrix.pytorch }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda }} | sed 's/\.//')/torch_stable.html
+            python -m pip install numpy pillow torch==${{ inputs.pytoch-version }} -f https://download.pytorch.org/whl/cu$(echo ${{ inputs.cuda-version }} | sed 's/\.//')/torch_stable.html
           fi
 
           python -V
