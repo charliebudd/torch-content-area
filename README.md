@@ -33,6 +33,11 @@ mask = content_area.draw_mask(image, area)
 ## Performance
 Performance is tested against the [dataset](testing/data) included in this repo...
 <!-- performance stats start -->
-TEST
+- Device: NVIDIA GeForce GTX 980 Ti
+- Avg Time (Infer Area Only): 0.184ms
+- Avg Time (Infer Area and Draw Mask): 0.172ms
+- Avg Score (IoU): 0.990
+- Misses (IoU < 0.99): 9.2%
+- Bad Misses (IoU < 0.95): 2.5% 
 <!-- performance stats end -->
 
