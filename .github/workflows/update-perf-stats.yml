@@ -1,0 +1,65 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        default: "3.9"
+      pytorch-version:
+        type: string
+        default: "1.11"
+      cuda-version:
+        type: string
+        default: "11.3"
+jobs: 
+  update-readme:
+    name: Test Release
+    runs-on: [self-hosted, Linux, X64, gpu]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install Test Requirements
+        run: |
+          ENV=../.venv-${{ inputs.python-version }}-${{ inputs.pytorch-version }}-${{ inputs.cuda-version }}
+          if [ -d "$ENV" ]; then
+            . $ENV/bin/activate
+          else
+            python -m venv $ENV
+            . $ENV/bin/activate
+            python -m pip install -U --force-reinstall pip
+            python -m pip install numpy pillow torch==${{ inputs.pytorch-version }} -f https://download.pytorch.org/whl/cu$(echo ${{ inputs.cuda-version }} | sed 's/\.//')/torch_stable.html
+          fi
+
+          python -V
+          pip show torch
+        
+      - name: Install torchcontentarea
+        run: python setup.py install
+
+      - id: run-tests
+        name: Run Tests
+        run: |
+          RESULTS=$(python testing/test_performance.py | grep '-')
+          RESULTS=$(printf '%s\n' "$RESULTS" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
+
+          START="<!-- performance stats start -->"
+          END="<!-- performance stats end -->"
+          sed -ni "/$START/{p;:a;N;/$END/!ba;s/.*\n/$RESULTS \n/};p" README.md
+
+          git add README.md
+          git commit -m "updating performance stats"
+
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.head_ref }}
