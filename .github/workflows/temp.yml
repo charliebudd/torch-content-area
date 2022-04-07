@@ -49,6 +49,9 @@ jobs:
           END="<!-- performance stats end -->"
           sed -ni "/$START/{p;:a;N;/$END/!ba;s/.*\n/$RESULTS \n/};p" README.md
 
+          git add README.md
+          git commit -m "updating performance stats"
+
       - name: Push changes
         uses: ad-m/github-push-action@master
         with:
