@@ -43,11 +43,11 @@ jobs:
         name: Run Tests
         run: |
           RESULTS=$(python testing/test_performance.py | grep '-')
-          RESULTS=$(printf '%s\n' "$results" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
+          RESULTS=$(printf '%s\n' "$RESULTS" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
 
           START="<!-- performance stats start -->"
           END="<!-- performance stats end -->"
-          sed -ni "/$START/{p;:a;N;/$END/!ba;s/.*\n/$RESULTS \n/};p" README.md <<< "$results"
+          sed -ni "/$START/{p;:a;N;/$END/!ba;s/.*\n/$RESULTS \n/};p" README.md
 
           cat README.md
 
