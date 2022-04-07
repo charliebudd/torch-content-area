@@ -29,6 +29,7 @@ jobs:
   update-perfromance-stats:
     if: ${{ github.base_ref == 'main' }}
     name: Update Performance Stats
+    needs: test-wheels-locally
     uses: ./.github/workflows/update-perf-stats.yml
 
   publish-wheels-to-testpypi:
