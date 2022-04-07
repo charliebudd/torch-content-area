@@ -16,12 +16,6 @@ jobs:
   update-readme:
     name: Test Release
     runs-on: [self-hosted, Linux, X64, gpu]
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ${{ inputs.python-version }}
-        pytorch: ${{ inputs.pytoch-version }}
-        cuda: ${{ inputs.cuda-version }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
@@ -33,14 +27,14 @@ jobs:
 
       - name: Install Test Requirements
         run: |
-          ENV=../.venv-${{ inputs.python-version }}-${{ inputs.pytoch-version }}-${{ inputs.cuda-version }}
+          ENV=../.venv-${{ inputs.python-version }}-${{ inputs.pytorch-version }}-${{ inputs.cuda-version }}
           if [ -d "$ENV" ]; then
             . $ENV/bin/activate
           else
             python -m venv $ENV
             . $ENV/bin/activate
             python -m pip install -U --force-reinstall pip
-            python -m pip install numpy pillow torch==${{ inputs.pytoch-version }} -f https://download.pytorch.org/whl/cu$(echo ${{ inputs.cuda-version }} | sed 's/\.//')/torch_stable.html
+            python -m pip install numpy pillow torch==${{ inputs.pytorch-version }} -f https://download.pytorch.org/whl/cu$(echo ${{ inputs.cuda-version }} | sed 's/\.//')/torch_stable.html
           fi
 
           python -V
