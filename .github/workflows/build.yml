@@ -27,7 +27,7 @@ jobs:
       cuda-versions: "[10.2, 11.3]"
 
   update-perfromance-stats:
-    if: startsWith(github.ref, 'refs/heads/main')
+    if: ${{ github.base_ref == 'main' }}
     name: Update Performance Stats
     uses: ./.github/workflows/update-perf-stats.yml
 
