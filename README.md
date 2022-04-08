@@ -3,16 +3,13 @@ A PyTorch tool kit for segmenting the endoscopic content area in laparoscopy foo
 
 [![Build Status](https://github.com/charliebudd/torch-content-area/actions/workflows/build.yml/badge.svg)](https://github.com/charliebudd/torch-content-area/actions/workflows/build.yml)
 
-
 ## Installation
-First ensure you have PyTorch installed and the CUDA toolkit is present on your machine, then run...
+To install the latest version, simply run...
 ```
-pip install git+https://github.com/charliebudd/torch-content-area.git@main
+pip install torchcontentarea
 ```
-To avoid runtime errors and achieve optimal performance, ensure that your CUDA toolkit version matches the version of CUDA used by your PyTorch version. Currently PyTorch uses either CUDA 10.2 or CUDA 11.3. 
 
 ## Usage
-
 First, import the `ContentAreaInference` class and create an instance...
 ```
 from torchcontentarea import ContentAreaInference
