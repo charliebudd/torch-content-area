@@ -3,6 +3,8 @@ A PyTorch tool kit for segmenting the endoscopic content area in laparoscopy foo
 
 [![Build Status](https://github.com/charliebudd/torch-content-area/actions/workflows/build.yml/badge.svg)](https://github.com/charliebudd/torch-content-area/actions/workflows/build.yml)
 
+![Example GIF](example.gif?raw=true)
+
 ## Installation
 To install the latest version, simply run...
 ```
