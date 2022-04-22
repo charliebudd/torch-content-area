@@ -5,14 +5,21 @@ ContentAreaInference::ContentAreaInference()
 {
     m_height_samples = 8;
     m_point_count = 2 * m_height_samples;
+    m_buffer_size = 5 * m_point_count * sizeof(uint);
 
-    cudaMalloc(&m_dev_block, 2 * m_point_count * sizeof(uint));
-    m_dev_points = m_dev_block;
-    m_dev_scores = m_dev_block + m_point_count;
+    cudaMalloc(&m_dev_block, m_buffer_size);
+    m_dev_edge_x = m_dev_block + 0 * m_point_count;
+    m_dev_edge_y = m_dev_block + 1 * m_point_count;
+    m_dev_norm_x = m_dev_block + 2 * m_point_count;
+    m_dev_norm_y = m_dev_block + 3 * m_point_count;
+    m_dev_scores = m_dev_block + 4 * m_point_count;
     
-    cudaMallocHost((void**)&m_hst_block, 2 * m_point_count * sizeof(uint));
-    m_hst_points = m_hst_block;
-    m_hst_scores = m_hst_block + m_point_count;
+    cudaMallocHost((void**)&m_hst_block, m_buffer_size);
+    m_hst_edge_x = m_hst_block + 0 * m_point_count;
+    m_hst_edge_y = m_hst_block + 1 * m_point_count;
+    m_hst_norm_x = m_hst_block + 2 * m_point_count;
+    m_hst_norm_y = m_hst_block + 3 * m_point_count;
+    m_hst_scores = m_hst_block + 4 * m_point_count;
 }
 
 ContentAreaInference::~ContentAreaInference()
