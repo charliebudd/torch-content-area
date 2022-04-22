@@ -30,7 +30,7 @@ public:
     std::vector<std::vector<int>> get_points(uint8* image, const uint image_height, const uint image_width);
 
 private:
-    uint m_point_count, m_height_samples;
-    uint *m_hst_block, *m_hst_points, *m_hst_scores;
-    uint *m_dev_block, *m_dev_points, *m_dev_scores;
+    uint m_height_samples, m_point_count, m_buffer_size;
+    uint *m_hst_block, *m_hst_edge_x, *m_hst_edge_y, *m_hst_norm_x, *m_hst_norm_y, *m_hst_scores;
+    uint *m_dev_block, *m_dev_edge_x, *m_dev_edge_y, *m_dev_norm_x, *m_dev_norm_y, *m_dev_scores;
 };
