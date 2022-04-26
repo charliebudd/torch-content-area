@@ -31,7 +31,11 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     // ============================================================
     // Load strip into shared memory, interpolating using nearest neighbour...
 
-    int image_x = threadIdx.x * image_width / thread_count;
+    // int image_x = threadIdx.x * image_width / thread_count;
+    float remainder = threadIdx.x * image_width / thread_count;
+    int image_x = remainder;
+    remainder -= image_x;
+
     int strip_index = blockIdx.x;
     int strip_height = (strip_index + 0.5) * height_gap;
 
@@ -42,7 +46,7 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
             int strip_element_index = threadIdx.x + y * thread_count + c * kernel_size * thread_count;
             int image_element_index = image_x + (strip_height + (y - kernel_offset)) * image_width + c * image_width * image_height;
 
-            s_image_strip[strip_element_index] = g_image[image_element_index];
+            s_image_strip[strip_element_index] = ((1 - remainder) * g_image[image_element_index] + remainder * g_image[image_element_index + 1]) / 2;
         }
     }
     
@@ -96,7 +100,7 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     
     float grad = sqrt(x_grad * x_grad + y_grad * y_grad);
 
-    bool is_edge = grad > 0.040;
+    bool is_edge = grad > 0.026;
 
     // ============================================================
     // Reduction to find the first and last edge in strip...
@@ -215,7 +219,7 @@ __global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge
     float x_grad = 0;
     float y_grad = 0;
 
-    if (patch_x > 0 && patch_x < patch_size - 1 && patch_y > 0 && patch_y < patch_size - 1)
+    if (image_x > 0 && image_x < image_width - 1 && patch_x > 0 && patch_x < patch_size - 1 && patch_y > 0 && patch_y < patch_size - 1)
     {
         float left  = 0.25 * s_image_patch[patch_x - 1][patch_y - 1] + 0.5 * s_image_patch[patch_x - 1][patch_y] + 0.25 * s_image_patch[patch_x - 1][patch_y + 1];
         float right = 0.25 * s_image_patch[patch_x + 1][patch_y - 1] + 0.5 * s_image_patch[patch_x + 1][patch_y] + 0.25 * s_image_patch[patch_x + 1][patch_y + 1];
@@ -311,7 +315,6 @@ __global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge
             float dot = ex * gx + ey * gy;
 
             g_edge_x[point_index] = dot > 0.9 ? point_x : 0;
-            // g_edge_x[point_index] = point_x;
             g_edge_y[point_index] = point_y;
 
             // g_edge_x[point_index] = dot > 0.95 ? x_mean : 0;
