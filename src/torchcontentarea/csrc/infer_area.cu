@@ -377,6 +377,8 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float*
         s_norm_x[threadIdx.x] = g_norm_x[threadIdx.x];
         s_norm_y[threadIdx.x] = g_norm_y[threadIdx.x];
     }
+    
+    __syncthreads();
 
     const uint warp_count = (blockDim.x >> 5) + 1; /// +1 ????????????????
     const uint warp_index = threadIdx.x >> 5;
