@@ -32,9 +32,9 @@ mask = content_area.draw_mask(image, area)
 ## Performance
 Performance is tested against the [dataset](testing/data) included in this repo...
 <!-- performance stats start -->
-- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.192ms
-- Avg Score (IoU): 0.990
-- Misses (IoU < 0.99): 9.2%
-- Bad Misses (IoU < 0.95): 2.5% 
+- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.195ms
+- Avg Score (IoU): 0.989
+- Misses (IoU < 0.99): 8.3%
+- Bad Misses (IoU < 0.95): 1.5% 
 <!-- performance stats end -->
 
