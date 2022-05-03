@@ -9,7 +9,7 @@ ext_source_files = glob(ext_src_dir + "*.cpp") + glob(ext_src_dir + "*.cu")
 
 compile_args = {
     'cxx': ['-g0'],
-    'nvcc': ['-O2']
+    'nvcc': ['-O3']
 }
 
 setup(
