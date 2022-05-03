@@ -9,21 +9,22 @@
 #define STRICT_EDGE_THRESHOLD 10.5
 #define ANGLE_THRESHOLD 26
 
-#define DEG2RAD 0.01745329251
+#define MAX_POINT_COUNT 32
+#define DEG2RAD 0.01745329251f
 
-__device__ inline float load_grayscale(const uint8* data, const uint index, const uint x_stride, const uint y_stride)
+__device__ float load_grayscale(const uint8* data, const uint index, const uint x_stride, const uint y_stride)
 {
-    return 0.2126 * data[index + 0 * x_stride * y_stride] + 0.7152 * data[index + 1 * x_stride * y_stride] + 0.0722 * data[index + 2 * x_stride * y_stride];
+    return 0.2126f * data[index + 0 * x_stride * y_stride] + 0.7152f * data[index + 1 * x_stride * y_stride] + 0.0722f * data[index + 2 * x_stride * y_stride];
 }
 
-__device__ inline float sobel_filter(const float* data, const uint index, const uint x_stride, const uint y_stride, float* x_grad, float* y_grad)
+__device__ float sobel_filter(const float* data, const uint index, const uint x_stride, const uint y_stride, float* x_grad, float* y_grad)
 {
-    float left  = 0.25 * data[index - x_stride - y_stride] + 0.5 * data[index - x_stride] + 0.25 * data[index - x_stride + y_stride];
-    float right = 0.25 * data[index + x_stride - y_stride] + 0.5 * data[index + x_stride] + 0.25 * data[index + x_stride + y_stride];
+    float left  = 0.25f * data[index - x_stride - y_stride] + 0.5f * data[index - x_stride] + 0.25f * data[index - x_stride + y_stride];
+    float right = 0.25f * data[index + x_stride - y_stride] + 0.5f * data[index + x_stride] + 0.25f * data[index + x_stride + y_stride];
     *x_grad = right - left;
 
-    float top = 0.25 * data[index - x_stride - y_stride] + 0.5 * data[index - y_stride] + 0.25 * data[index + x_stride - y_stride];
-    float bot = 0.25 * data[index - x_stride + y_stride] + 0.5 * data[index + y_stride] + 0.25 * data[index + x_stride + y_stride];
+    float top = 0.25f * data[index - x_stride - y_stride] + 0.5f * data[index - y_stride] + 0.25f * data[index + x_stride - y_stride];
+    float bot = 0.25f * data[index - x_stride + y_stride] + 0.5f * data[index + y_stride] + 0.25f * data[index + x_stride + y_stride];
     *y_grad = bot - top;
 
     return sqrt(*x_grad * *x_grad + *y_grad * *y_grad);
@@ -34,14 +35,11 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
 {
     constexpr uint warp_size = 32;
     constexpr uint thread_count = warp_count * warp_size;
-    constexpr uint kernel_size = 3;
-    constexpr uint kernel_offset = (kernel_size - 1) / 2;
-    constexpr uint channel_count = 3;
     
     uint warp_index = threadIdx.x >> 5;
     uint lane_index = threadIdx.x & 31;
 
-    __shared__ float s_image_strip[thread_count * kernel_size];
+    __shared__ float s_image_strip[thread_count * 3];
     __shared__ uint s_first_edge_reduction_buffer[warp_count];
     __shared__ uint s_last_edge_reduction_buffer[warp_count];
 
@@ -56,9 +54,9 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     int strip_height = (strip_index + 0.5) * height_gap;
 
     #pragma unroll
-    for (int y = 0; y < kernel_size; y++)
+    for (int y = 0; y < 3; y++)
     {
-        int image_element_index = image_x + (strip_height + (y - kernel_offset)) * image_width;
+        int image_element_index = image_x + (strip_height + (y - 1)) * image_width;
 
         float a = load_grayscale(g_image, image_element_index, image_width, image_height);
         float b = load_grayscale(g_image, image_element_index + 1, image_width, image_height);
@@ -148,13 +146,9 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     }
 }
 
-__global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, const uint image_width, const uint image_height, const uint strip_count)
+__global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, float* g_norm_x, float* g_norm_y, const uint image_width, const uint image_height, const uint strip_count)
 {
-    constexpr uint warp_count = 1;
     constexpr uint warp_size = 32;
-    
-    uint warp_index = threadIdx.x >> 5;
-    uint lane_index = threadIdx.x & 31;
 
     __shared__ float s_image_strip[warp_size * 3];
     
@@ -194,7 +188,17 @@ __global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge
         grad = sobel_filter(s_image_strip, threadIdx.x + warp_size, 1, warp_size, &x_grad, &y_grad);
     }
 
-    bool is_edge = grad > STRICT_EDGE_THRESHOLD;
+    float center_dir_x = (image_width / 2.0f) - (float)image_x;
+    float center_dir_y = (image_height / 2.0f) - (float)point_y;
+
+    float center_dir_norm = sqrt(center_dir_x * center_dir_x + center_dir_y * center_dir_y);
+
+    float dot = (center_dir_x * x_grad + center_dir_y * y_grad) / (center_dir_norm * grad);
+
+    bool is_edge = grad > STRICT_EDGE_THRESHOLD &&  dot > cos(ANGLE_THRESHOLD * DEG2RAD);
+
+    x_grad /= grad;
+    y_grad /= grad;
 
     // ============================================================
     // Reduction to find the first and last edge in strip...
@@ -207,128 +211,22 @@ __global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge
     for (int offset = warp_size >> 1; offset > 0; offset >>= 1)
     {
         int other_edge = __shfl_down_sync(0xffffffff, edge, offset);
+        float other_x_grad = __shfl_down_sync(0xffffffff, x_grad, offset);
+        float other_y_grad = __shfl_down_sync(0xffffffff, y_grad, offset);
 
         if ((flip && other_edge > edge) || (!flip && other_edge < edge))
         {
             edge = other_edge;
+            x_grad = other_x_grad;
+            y_grad = other_y_grad;
         }
     }
 
-    if (lane_index == 0)
+    if (threadIdx.x == 0)
     {
         g_edge_x[point_index] = edge;
-    }
-}
-
-__global__ void filter_points_by_gradient(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, float* g_norm_x, float* g_norm_y, const uint image_width, const uint image_height, const uint strip_count)
-{
-    constexpr uint warp_count = 8;
-    constexpr uint warp_size = 32;
-    constexpr uint patch_size = 16;
-    
-    uint warp_index = (threadIdx.x + 16 * threadIdx.y) >> 5;
-    uint lane_index = (threadIdx.x + 16 * threadIdx.y) & 31;
-
-    __shared__ float s_image_patch[patch_size * patch_size];
-    __shared__ float s_reduction_buffer[warp_count * 2];
-    
-    // ============================================================
-    // Get approximate point position...
-
-    int point_index = blockIdx.x;
-
-    uint point_x = g_edge_x[point_index];
-    uint point_y = g_edge_y[point_index];
-
-    if (point_x < 1 || point_x > image_width - 2)
-        return;
-
-    // ============================================================
-    // Load patch centered around point position into shared memory...
-
-    int patch_x = threadIdx.x;
-    int patch_y = threadIdx.y;
-
-    int image_x = point_x + (patch_x - patch_size / 2);
-    int image_y = point_y + (patch_y - patch_size / 2);
-
-    int patch_index = patch_x + patch_y * patch_size;
-    int image_index = image_x + image_y * image_width;
-    
-    s_image_patch[patch_x + patch_y * patch_size] = load_grayscale(g_image, image_index, image_width, image_height);
-    
-    __syncthreads();
-    
-    // ============================================================
-    // Apply sobel filter...
-
-    float x_grad = 0;
-    float y_grad = 0;
-    float grad = 0;
-
-    if (patch_x > 0 && patch_x < patch_size - 1 && patch_y > 0 && patch_y < patch_size - 1)
-    {
-        grad = sobel_filter(s_image_patch, patch_x + patch_y * patch_size, 1, patch_size, &x_grad, &y_grad);
-    }
-
-    // ============================================================
-    // Reduce values...
-
-    bool is_edge = grad > STRICT_EDGE_THRESHOLD;
-
-    float gx = x_grad * is_edge;
-    float gy = y_grad * is_edge;
-    
-    // warp reduction....
-    #pragma unroll
-    for (int offset = warp_size >> 1; offset > 0; offset >>= 1)
-    {
-        gx += __shfl_down_sync(0xffffffff, gx, offset);
-        gy += __shfl_down_sync(0xffffffff, gy, offset);
-    }
-
-    if (lane_index == 0)
-    {
-        s_reduction_buffer[warp_index + 0 * warp_count] = gx;
-        s_reduction_buffer[warp_index + 1 * warp_count] = gy;
-    }
-
-    __syncthreads();
-
-    // block reduction....
-    if (warp_index == 0 && lane_index < warp_count)
-    {
-        gx = s_reduction_buffer[lane_index + 0 * warp_count];
-        gy = s_reduction_buffer[lane_index + 1 * warp_count];
-
-        #pragma unroll
-        for (int offset = warp_count >> 1 ; offset > 0; offset >>= 1)
-        {
-            gx += __shfl_down_sync(0xffffffff, gx, offset);
-            gy += __shfl_down_sync(0xffffffff, gy, offset);
-        }
-
-        if (lane_index == 0)
-        {
-            float norm = sqrt(gx * gx + gy * gy);
-            gx /= norm;
-            gy /= norm;
-            
-            float ex = (image_width / 2) - (float)point_x;
-            float ey = (image_height / 2) - (float)point_y;
-            norm = sqrt(ex * ex + ey * ey);
-            ex /= norm;
-            ey /= norm;
-
-            float dot = ex * gx + ey * gy;
-            bool valid = dot > cos(ANGLE_THRESHOLD * DEG2RAD);
-            
-            g_edge_x[point_index] = valid ? point_x : 0;
-            g_edge_y[point_index] = valid ? point_y : 0;
-
-            g_norm_x[point_index] = valid ? gx : 0;
-            g_norm_y[point_index] = valid ? gy : 0;
-        }
+        g_norm_x[point_index] = x_grad;
+        g_norm_y[point_index] = y_grad;
     }
 }
 
@@ -360,32 +258,28 @@ __host__ __device__ uint triangle_size(const uint n)
     return n * (n - 1) / 2;
 }
 
+// Calculates the ij indices for element k of a n x n square 
 __device__ void square_indices(const int k, const int n, uint* i, uint* j)
 {
     *i = n - 2 - int(sqrt(-8 * k + 4 * n * (n - 1) - 7) / 2.0 - 0.5);
     *j = k + *i + 1 -  n * (n - 1) / 2 + (n - *i) * ((n - *i) - 1) / 2;
 }
 
-__global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float* g_norm_x, float* g_norm_y, uint* g_edge_scores, const uint point_count, const uint image_height, const uint image_width)
+__global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, uint* g_edge_scores, const uint point_count, const uint image_height, const uint image_width)
 {
-    // HARDCODED SIZE!!!!!!!!!!!!!!!
-    __shared__ uint s_edge_x[32];
-    __shared__ uint s_edge_y[32];
-    __shared__ float s_norm_x[32];
-    __shared__ float s_norm_y[32];
-    __shared__ uint s_scores[32];
+    __shared__ uint s_edge_x[MAX_POINT_COUNT];
+    __shared__ uint s_edge_y[MAX_POINT_COUNT];
+    __shared__ float s_score_reduction_buffer[MAX_POINT_COUNT];
 
     if (threadIdx.x < point_count)
     {
         s_edge_x[threadIdx.x] = g_edge_x[threadIdx.x];
         s_edge_y[threadIdx.x] = g_edge_y[threadIdx.x];
-        s_norm_x[threadIdx.x] = g_norm_x[threadIdx.x];
-        s_norm_y[threadIdx.x] = g_norm_y[threadIdx.x];
     }
     
     __syncthreads();
 
-    const uint warp_count = (blockDim.x >> 5) + 1; /// +1 ????????????????
+    const uint warp_count = ((blockDim.x - 1) >> 5) + 1;
     const uint warp_index = threadIdx.x >> 5;
     const uint lane_index = threadIdx.x & 31;
 
@@ -395,18 +289,12 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float*
 
     float ax = s_edge_x[a_index];
     float ay = s_edge_y[a_index];
-    float anx = s_norm_x[a_index];
-    float any = s_norm_y[a_index];
     
     float bx = s_edge_x[b_index];
     float by = s_edge_y[b_index];
-    float bnx = s_norm_x[b_index];
-    float bny = s_norm_y[b_index];
     
     float cx = s_edge_x[c_index];
     float cy = s_edge_y[c_index];
-    float cnx = s_norm_x[c_index];
-    float cny = s_norm_y[c_index];
 
     float x, y, r;
     bool valid = calculate_circle(ax, ay, bx, by, cx, cy, &x, &y, &r);
@@ -416,37 +304,35 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float*
     float diff = sqrt(x_diff * x_diff + y_diff * y_diff);
 
     // Filter out bad circles
-    uint score = valid;
-    score &= ax > 1;
-    score &= ax < image_width - 2;
-    score &= bx > 1;
-    score &= bx < image_width - 2;
-    score &= cx > 1;
-    score &= cx < image_width - 2;
-    score &= diff < MAX_CENTER_DIST * image_width;
-    score &= r > MIN_RADIUS * image_width;
-    score &= r < MAX_RADIUS * image_width;
+    valid &= ax > 1;
+    valid &= ax < image_width - 2;
+    valid &= bx > 1;
+    valid &= bx < image_width - 2;
+    valid &= cx > 1;
+    valid &= cx < image_width - 2;
+    valid &= diff < MAX_CENTER_DIST * image_width;
+    valid &= r > MIN_RADIUS * image_width;
+    valid &= r < MAX_RADIUS * image_width;
 
-    if (score)
+    float score = 0.0f;
+
+    if (valid)
     {
         score = 0;
 
         for (int i=0; i < point_count; i++)
         {
-            float py = s_edge_y[i];
-            float px = s_edge_x[i];
-            float pnx = s_norm_x[i];
-            float pny = s_norm_y[i];
+            float diff_x = (s_edge_x[i] - x);
+            float diff_y = (s_edge_y[i] - y);
 
-            float diff_x = (px - x);
-            float diff_y = (py - y);
+            float diff = sqrt(diff_x * diff_x + diff_y * diff_y);
+            diff = abs(diff - r);
 
-            float diff = diff_x * diff_x + diff_y * diff_y;
-            uint d = abs(diff - r * r);
+            constexpr float dist = 4.0f;
 
-            if (d < 2000)
+            if (diff < dist)
             {
-                score += 2000 - d;
+                score += dist - diff;
             }
         }
     }
@@ -461,7 +347,7 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float*
 
     if (lane_index == 0)
     { 
-        s_scores[warp_index] = score;
+        s_score_reduction_buffer[warp_index] = score;
     }
 
     // Syncing between warps
@@ -470,7 +356,7 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float*
     // Block reduction
     if (warp_index == 0 && lane_index < warp_count)
     {
-        score = s_scores[lane_index];
+        score = s_score_reduction_buffer[lane_index];
         
         #pragma unroll
         for (int offset = warp_count / 2; offset > 0; offset /= 2)
@@ -540,7 +426,7 @@ void select_final_triple(const uint point_count, const uint* scores, int* indice
 }
 
 #define warp_size 32
-#define warp_count 16
+#define find_points_warp_count 16
 
 ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
 {
@@ -554,17 +440,13 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     // A thread block for each point
 
     dim3 find_points_grid(m_height_samples);
-    dim3 find_points_block(warp_size * warp_count);
-    find_points<warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, height_gap, m_height_samples);
+    dim3 find_points_block(warp_size * find_points_warp_count);
+    find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, height_gap, m_height_samples);
 
     dim3 refine_points_grid(m_point_count);
     dim3 refine_points_block(warp_size);
-    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, m_height_samples);
-    
-    dim3 filter_points_grid(m_point_count);
-    dim3 filter_points_block(16, 16);
-    filter_points_by_gradient<<<filter_points_grid, filter_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, (float*)m_dev_norm_x, (float*)m_dev_norm_y, image_width, image_height, m_height_samples);
-    
+    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, (float*)m_dev_norm_x, (float*)m_dev_norm_y, image_width, image_height, m_height_samples);
+
     // #########################################################
     // Evaluating candidate points...
     // A thread block for each point (left and right)
@@ -572,10 +454,10 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 
     dim3 check_triples_grid(m_point_count);
     dim3 check_triples_block(triangle_size(m_point_count));
-    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, (float*)m_dev_norm_x, (float*)m_dev_norm_y, m_dev_scores, m_point_count, image_height, image_width);
+    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
 
     // #########################################################
-    // Reading back results and freeing cuda memory...
+    // Reading back results...
 
     cudaMemcpy(m_hst_block, m_dev_block, m_buffer_size, cudaMemcpyDeviceToHost);
 
@@ -603,25 +485,22 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     return ContentArea(x, y, r);
 }
 
+
 std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, const uint image_height, const uint image_width)
 {
     uint height_gap = image_height / m_height_samples;
 
     dim3 find_points_grid(m_height_samples);
-    dim3 find_points_block(warp_size * warp_count);
-    find_points<warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, height_gap, m_height_samples);
+    dim3 find_points_block(warp_size * find_points_warp_count);
+    find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, height_gap, m_height_samples);
 
     dim3 refine_points_grid(m_point_count);
     dim3 refine_points_block(warp_size);
-    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, m_height_samples);
+    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, (float*)m_dev_norm_x, (float*)m_dev_norm_y, image_width, image_height, m_height_samples);
     
-    dim3 filter_points_grid(m_point_count);
-    dim3 filter_points_block(16, 16);
-    filter_points_by_gradient<<<filter_points_grid, filter_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, (float*)m_dev_norm_x, (float*)m_dev_norm_y, image_width, image_height, m_height_samples);
-
     dim3 check_triples_grid(m_point_count);
     dim3 check_triples_block(triangle_size(m_point_count));
-    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, (float*)m_dev_norm_x, (float*)m_dev_norm_y, m_dev_scores, m_point_count, image_height, image_width);
+    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
 
     cudaMemcpy(m_hst_block, m_dev_block, m_buffer_size, cudaMemcpyDeviceToHost);
 
