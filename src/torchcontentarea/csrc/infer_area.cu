@@ -265,7 +265,7 @@ __device__ void square_indices(const int k, const int n, uint* i, uint* j)
     *j = k + *i + 1 -  n * (n - 1) / 2 + (n - *i) * ((n - *i) - 1) / 2;
 }
 
-__global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, uint* g_edge_scores, const uint point_count, const uint image_height, const uint image_width)
+__global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float* g_edge_scores, const uint point_count, const uint image_height, const uint image_width)
 {
     __shared__ uint s_edge_x[MAX_POINT_COUNT];
     __shared__ uint s_edge_y[MAX_POINT_COUNT];
@@ -332,7 +332,7 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, uint* 
 
             if (diff < dist)
             {
-                score += dist - diff;
+                score += 1 - diff / dist;
             }
         }
     }
@@ -367,7 +367,7 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, uint* 
         // Outputting result
         if (lane_index == 0)
         {
-            g_edge_scores[a_index] = score;
+            g_edge_scores[a_index] = score / ((blockDim.x - (point_count - 1)) * point_count);
         }
     }
 }
@@ -380,7 +380,7 @@ float distance_score(const uint height_samples, const uint i, const uint j)
     return sqrt((x_diff * x_diff + y_diff * y_diff) / 2);
 }
 
-void select_final_triple(const uint point_count, const uint* scores, int* indices)
+void select_final_triple(const uint point_count, const float* scores, int* indices)
 {
     float best_score = -1.0f;
 
@@ -454,7 +454,7 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 
     dim3 check_triples_grid(m_point_count);
     dim3 check_triples_block(triangle_size(m_point_count));
-    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
+    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, (float*)m_dev_scores, m_point_count, image_height, image_width);
 
     // #########################################################
     // Reading back results...
@@ -465,7 +465,7 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     // Choosing the final points and calculating circle...
 
     int indices[3] {0, 1, 2};
-    select_final_triple(m_point_count, m_hst_scores, indices);
+    select_final_triple(m_point_count, (float*)m_hst_scores, indices);
 
     int ax = m_hst_edge_x[indices[0]];
     int ay = m_hst_edge_y[indices[0]];
@@ -500,12 +500,12 @@ std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, con
     
     dim3 check_triples_grid(m_point_count);
     dim3 check_triples_block(triangle_size(m_point_count));
-    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
+    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, (float*)m_dev_scores, m_point_count, image_height, image_width);
 
     cudaMemcpy(m_hst_block, m_dev_block, m_buffer_size, cudaMemcpyDeviceToHost);
 
     int indices[3];
-    select_final_triple(m_point_count, m_hst_scores, indices);
+    select_final_triple(m_point_count, (float*)m_hst_scores, indices);
 
     std::vector<int> points_x, points_y, norm_x, norm_y, scores;
     for (int i = 0; i < m_point_count; i++)
