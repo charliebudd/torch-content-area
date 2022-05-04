@@ -1,3 +1,4 @@
+import json
 import glob
 import numpy as np
 from PIL import Image
@@ -60,6 +61,22 @@ def iou_score(a, b):
     iou = (intersection + SMOOTH) / (union + SMOOTH)
     return iou.item()
 
+def perimeter_distance_score(a, b):
+    a_center = np.array([a[0], a[1]])
+    a_radius = a[2]
+
+    b_center = np.array([b[0], b[1]])
+    b_radius = b[2]
+
+    d = np.linalg.norm(a_center - b_center)
+
+    ab = abs(a_radius - b_radius + d)
+    ba = abs(b_radius - a_radius + d)
+
+    return max(ab, ba)
+    return (ab + ba) / 2
+    return ab + ba
+
 def parameter_errors(a, b):
     a_center = np.array([a[0], a[1]])
     a_radius = a[2]
@@ -108,20 +125,20 @@ class DummyDataset(Dataset):
 class TestDataset(Dataset):
     def __init__(self) -> None:
         super().__init__()
-        self.img_paths = sorted(glob.glob(f'{__dir__}/data/*_img.png'))
-        self.seg_paths = sorted(glob.glob(f'{__dir__}/data/*_seg.png'))
-        self.length = len(self.img_paths)
-
-        assert len(self.img_paths) == len(self.seg_paths), f'Number of images ({len(self.img_paths)}) doesn\'t match the number of segmentations ({len(self.seg_paths)})!'
-        assert len(self.img_paths) > 0, f'No samples found!'
+        with open(f'{__dir__}/data/samples.json') as samples_file:
+            samples = json.load(samples_file)
+        self.img_paths = [f'{__dir__}/data/{s["image_file"]}' for s in samples]
+        self.seg_paths = [f'{__dir__}/data/{s["segmentation_file"]}' for s in samples]
+        self.content_areas = [s["content_area"] for s in samples]
+        self.length = len(samples)
 
     def __len__(self):
         return self.length
 
     def __getitem__(self, index):
-        img, seg = self.img_paths[index], self.seg_paths[index]
+        img, seg, area = self.img_paths[index], self.seg_paths[index], self.content_areas[index]
         img, seg = tuple(map(lambda x: torch.from_numpy(np.array(Image.open(x))), (img, seg)))
-        return img.permute(2, 0, 1), seg.unsqueeze(0)
+        return img.permute(2, 0, 1), seg.unsqueeze(0), area
 
 class TestDataLoader(DataLoader):
     def __init__(self, dataset, shuffle=False) -> None:
