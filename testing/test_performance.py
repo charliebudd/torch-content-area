@@ -1,8 +1,11 @@
 import unittest
 import torch
 
-from utils import TestDataset, TestDataLoader, timed, iou_score
+from utils import TestDataset, TestDataLoader, timed, iou_score, perimeter_distance_score
 from torchcontentarea import ContentAreaInference
+
+MISS_THRESHOLD=10
+BAD_MISS_THRESHOLD=20
 
 class TestPerformance(unittest.TestCase):
                             
@@ -14,33 +17,37 @@ class TestPerformance(unittest.TestCase):
     def test_infer_mask(self):
 
         times = []
-        scores = []
+        errors = []
 
-        for img, seg in self.dataloader:
-            img, seg = img.cuda(), seg.cuda()
+        for img, mask, area in self.dataloader:
+            img, mask = img.cuda(), mask.cuda()
 
-            time, mask = timed(lambda x: self.content_area_inference.infer_mask(x), img)
+            time, infered_area = timed(lambda x: self.content_area_inference.infer_area(x), img)
 
-            score = iou_score(mask, seg)
+            error = perimeter_distance_score(area, infered_area)
+
+            if error > 1000:
+                error = 1000
 
             times.append(time)
-            scores.append(score)
-            
+            errors.append(error)
+
+
         avg_time = sum(times) / len(times)
-        avg_score = sum(scores) / len(scores)
-        miss_percentage = 100 * sum(map(lambda x: x < 0.99, scores)) / len(scores)
-        bad_miss_percentage = 100 * sum(map(lambda x: x < 0.95, scores)) / len(scores)
+        avg_error = sum(errors) / len(errors)
+        miss_percentage = 100 * sum(map(lambda x: x > MISS_THRESHOLD, errors)) / len(errors)
+        bad_miss_percentage = 100 * sum(map(lambda x: x > BAD_MISS_THRESHOLD, errors)) / len(errors)
 
         gpu_name = torch.cuda.get_device_name()
 
         print(f'Performance Results...')
         print(f'- Avg Time ({gpu_name}): {avg_time:.3f}ms')
-        print(f'- Avg Score (IoU): {avg_score:.3f}')
-        print(f'- Misses (IoU < 0.99): {miss_percentage:.1f}%')
-        print(f'- Bad Misses (IoU < 0.95): {bad_miss_percentage:.1f}%')
+        print(f'- Avg Error (Perimeter Distance): {avg_error:.3f}')
+        print(f'- Misses (Error > {MISS_THRESHOLD}): {miss_percentage:.1f}%')
+        print(f'- Bad Misses (Error > {BAD_MISS_THRESHOLD}): {bad_miss_percentage:.1f}%')
 
-        self.assertTrue(avg_time < 0.3)
-        self.assertTrue(avg_score > 0.98)
+        self.assertTrue(avg_time < 0.5)
+        self.assertTrue(avg_error < 10)
         self.assertTrue(miss_percentage < 10.0)
         self.assertTrue(bad_miss_percentage < 5.0)
 
