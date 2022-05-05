@@ -4,8 +4,8 @@ import torch
 from utils import TestDataset, TestDataLoader, timed, iou_score, perimeter_distance_score
 from torchcontentarea import ContentAreaInference
 
-MISS_THRESHOLD=10
-BAD_MISS_THRESHOLD=20
+MISS_THRESHOLD=5
+BAD_MISS_THRESHOLD=10
 
 class TestPerformance(unittest.TestCase):
                             
