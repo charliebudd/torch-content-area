@@ -73,9 +73,7 @@ def perimeter_distance_score(a, b):
     ab = abs(a_radius - b_radius + d)
     ba = abs(b_radius - a_radius + d)
 
-    return max(ab, ba)
     return (ab + ba) / 2
-    return ab + ba
 
 def parameter_errors(a, b):
     a_center = np.array([a[0], a[1]])
