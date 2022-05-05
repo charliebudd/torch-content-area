@@ -42,7 +42,7 @@ class TestPerformance(unittest.TestCase):
 
         print(f'Performance Results...')
         print(f'- Avg Time ({gpu_name}): {avg_time:.3f}ms')
-        print(f'- Avg Error (Perimeter Distance): {avg_error:.3f}')
+        print(f'- Avg Error (Perimeter Distance): {avg_error:.3f}px')
         print(f'- Misses (Error > {MISS_THRESHOLD}): {miss_percentage:.1f}%')
         print(f'- Bad Misses (Error > {BAD_MISS_THRESHOLD}): {bad_miss_percentage:.1f}%')
 
