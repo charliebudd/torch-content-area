@@ -8,6 +8,9 @@
 #define EDGE_THRESHOLD 4
 #define STRICT_EDGE_THRESHOLD 10.5
 #define ANGLE_THRESHOLD 26
+#define INLIER_THRESHOLD 4.0f
+#define MAX_RANSAC_ITERATIONS 10
+#define VALID_POINT_THRESHOLD 0.03
 
 #define MAX_POINT_COUNT 32
 #define DEG2RAD 0.01745329251f
@@ -31,7 +34,7 @@ __device__ float sobel_filter(const float* data, const uint index, const uint x_
 }
 
 template<int warp_count>
-__global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, const uint image_width, const uint image_height, const uint height_gap, const uint strip_count)
+__global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, const uint image_width, const uint image_height, const uint strip_count)
 {
     constexpr uint warp_size = 32;
     constexpr uint thread_count = warp_count * warp_size;
@@ -51,7 +54,9 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     remainder -= image_x;
 
     int strip_index = blockIdx.x;
-    int strip_height = (strip_index + 0.5) * height_gap;
+    int strip_height = (strip_index + 0.5) * image_height / strip_count;
+    // More points at the extremes...
+    // strip_height = image_height / (1.0f + exp(-(strip_index - strip_count / 2.0f + 0.5f)));
 
     #pragma unroll
     for (int y = 0; y < 3; y++)
@@ -304,12 +309,9 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float*
     float diff = sqrt(x_diff * x_diff + y_diff * y_diff);
 
     // Filter out bad circles
-    valid &= ax > 1;
-    valid &= ax < image_width - 2;
-    valid &= bx > 1;
-    valid &= bx < image_width - 2;
-    valid &= cx > 1;
-    valid &= cx < image_width - 2;
+    valid &= ax > 1 & ax < image_width - 2;
+    valid &= bx > 1 & bx < image_width - 2;
+    valid &= cx > 1 & cx < image_width - 2;
     valid &= diff < MAX_CENTER_DIST * image_width;
     valid &= r > MIN_RADIUS * image_width;
     valid &= r < MAX_RADIUS * image_width;
@@ -328,11 +330,9 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float*
             float diff = sqrt(diff_x * diff_x + diff_y * diff_y);
             diff = abs(diff - r);
 
-            constexpr float dist = 4.0f;
-
-            if (diff < dist)
+            if (diff < INLIER_THRESHOLD)
             {
-                score += 1 - diff / dist;
+                score += 1 - diff / INLIER_THRESHOLD;
             }
         }
     }
@@ -425,23 +425,191 @@ void select_final_triple(const uint point_count, const float* scores, int* indic
     }
 }
 
+bool Cholesky3x3(float* A, float* B)
+{
+    #define A(i,j) A[i + j * 3]
+    float Sum;
+    float Diagonal[3];
+    Sum= A(0,0);
+    if (Sum <= 0.f) return false;
+    Diagonal[0]= sqrt(Sum);
+    Sum= A(0,1);
+    A(1,0)= Sum / Diagonal[0];
+    Sum= A(0,2);
+    A(2,0)= Sum / Diagonal[0];
+    Sum= A(1,1) - A(1,0) * A(1,0);
+    if (Sum <= 0.f) return false;
+    Diagonal[1]= sqrt(Sum);
+    Sum= A(1,2) - A(1,0) * A(2,0);
+    A(2,1)= Sum / Diagonal[1];
+    Sum= A(2,2) - A(2,1) * A(2,1) - A(2,0) * A(2,0);
+    if (Sum <= 0.f) return false;
+    Diagonal[2]= sqrt(Sum);
+    Sum= B[0];
+    B[0]= Sum / Diagonal[0];
+    Sum= B[1] - A(1,0) * B[0];
+    B[1]= Sum / Diagonal[1];
+    Sum= B[2] - A(2,1) * B[1] - A(2,0) * B[0];
+    B[2]= Sum / Diagonal[2];
+    Sum= B[2];
+    B[2]= Sum / Diagonal[2];
+    Sum= B[1] - A(2,1) * B[2];
+    B[1]= Sum / Diagonal[1];
+    Sum= B[0] - A(1,0) * B[1] - A(2,0) * B[2];
+    B[0]= Sum / Diagonal[0];
+    return true;
+}
+
+void fit_circle(const std::vector<int> indices, uint* points_x, uint* points_y, float* circle_x, float* circle_y, float* circle_r)
+{
+    if (indices.size() == 3)
+    {
+        int ax = points_x[indices[0]];
+        int ay = points_y[indices[0]];
+        
+        int bx = points_x[indices[1]];
+        int by = points_y[indices[1]];
+        
+        int cx = points_x[indices[2]];
+        int cy = points_y[indices[2]];
+
+        calculate_circle(ax, ay, bx, by, cx, cy, circle_x, circle_y, circle_r);
+        return;
+    }
+   
+    float x=0, y=0, xy=0, xx=0, yy=0;
+    float xxx=0, xxy=0, xyy=0, yyy=0;
+    float n = indices.size();
+
+    for (int i : indices)
+    {
+        float p_x = points_x[i];
+        float p_y = points_y[i];
+
+        x   += p_x;
+        y   += p_y;
+        xy  += p_x * p_y;
+        xx  += p_x * p_x;
+        yy  += p_y * p_y;
+        xxx += p_x * p_x * p_x;
+        xxy += p_x * p_x * p_y;
+        xyy += p_x * p_y * p_y;
+        yyy += p_y * p_y * p_y;
+    }
+
+
+    float lhs[3][3] {
+        {xx, xy,  x},
+        {xy, yy,  y},
+        { x,  y,  n},
+    };
+
+    float rhs[3] {
+        xxx + xyy,
+        xxy + yyy,
+         xx +  yy
+    };
+
+    // solves set of equations lhs T = rhs for T
+    // answer writen into rhs
+    Cholesky3x3((float*)lhs, rhs);
+
+    float A=rhs[0], B=rhs[1], C=rhs[2];
+
+    *circle_x = A / 2.0f;
+    *circle_y = B / 2.0f;
+    *circle_r = sqrt(4.0f * C + A * A + B * B) / 2.0f;
+}
+
+void random_triplet(int max, int& a, int& b, int& c)
+{
+    a = rand() % max;
+    do b = rand() % max; while (b == a);
+    do c = rand() % max; while (c == a || c == b);
+}
+
+void circle_selection(const uint point_count, uint* points_x, uint* points_y, float* circle_x, float* circle_y, float* circle_r)
+{
+    int best_inlier_count = 0;
+
+    for (int iter = 0; iter < MAX_RANSAC_ITERATIONS; iter++)
+    {
+        int a, b, c;
+        random_triplet(point_count, a, b, c);
+
+        std::vector<int>* new_inliers = new std::vector<int>{a, b, c};
+        std::vector<int>* old_inliers = new std::vector<int>();
+
+        float new_circle_x, new_circle_y, new_circle_r;
+
+        while (true)
+        {
+            fit_circle(*new_inliers, points_x, points_y, &new_circle_x, &new_circle_y, &new_circle_r);
+            
+            // Break if all points fit...
+            if (new_inliers->size() == point_count)
+            {
+                break;
+            }
+
+            std::swap(new_inliers, old_inliers);
+
+            new_inliers->clear();
+
+            for (int i = 0; i < point_count; i++)
+            {
+                int x = points_x[i];
+                int y = points_y[i];
+
+                float delta_x = x - new_circle_x;
+                float delta_y = y - new_circle_y;
+
+                float delta = sqrt(delta_x * delta_x + delta_y * delta_y);
+                float error = abs(new_circle_r - delta);
+
+                if (error < INLIER_THRESHOLD)
+                {
+                    new_inliers->push_back(i);
+                }
+            }
+
+            // Break if at dead end...
+            if (new_inliers->size() < 3 || (new_inliers->size() == old_inliers->size() && std::equal(new_inliers->begin(), new_inliers->end(), old_inliers->begin())))
+            {
+                break;
+            }
+        }
+
+        int new_inlier_count = new_inliers->size();
+
+        if (new_inlier_count > best_inlier_count)
+        {
+            best_inlier_count = new_inlier_count;
+
+            *circle_x = new_circle_x;
+            *circle_y = new_circle_y;
+            *circle_r = new_circle_r;
+        }
+
+        if (new_inlier_count == point_count)
+        {
+            break;
+        }
+    }
+}
+
 #define warp_size 32
 #define find_points_warp_count 16
 
 ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
 {
     // #########################################################
-    // Some useful values...
-
-    uint height_gap = image_height / m_height_samples;
-
-    // #########################################################
     // Finding candididate points...
     // A thread block for each point
 
     dim3 find_points_grid(m_height_samples);
     dim3 find_points_block(warp_size * find_points_warp_count);
-    find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, height_gap, m_height_samples);
+    find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, m_height_samples);
 
     dim3 refine_points_grid(m_point_count);
     dim3 refine_points_block(warp_size);
@@ -464,35 +632,78 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     // #########################################################
     // Choosing the final points and calculating circle...
 
-    int indices[3] {0, 1, 2};
-    select_final_triple(m_point_count, (float*)m_hst_scores, indices);
+    // int indices[3] {0, 1, 2};
+    // select_final_triple(m_point_count, (float*)m_hst_scores, indices);
 
-    int ax = m_hst_edge_x[indices[0]];
-    int ay = m_hst_edge_y[indices[0]];
+    // int ax = m_hst_edge_x[indices[0]];
+    // int ay = m_hst_edge_y[indices[0]];
     
-    int by = m_hst_edge_y[indices[1]];
-    int bx = m_hst_edge_x[indices[1]];
+    // int by = m_hst_edge_y[indices[1]];
+    // int bx = m_hst_edge_x[indices[1]];
     
-    int cx = m_hst_edge_x[indices[2]];
-    int cy = m_hst_edge_y[indices[2]];
+    // int cx = m_hst_edge_x[indices[2]];
+    // int cy = m_hst_edge_y[indices[2]];
 
-    float x, y, r;
-    calculate_circle(ax, ay, bx, by, cx, cy, &x, &y, &r);
+    // float x, y, r;
+    // calculate_circle(ax, ay, bx, by, cx, cy, &x, &y, &r);
 
     // #########################################################
-    // Constructing final area to return...
+    // Removing invalid points...
 
-    return ContentArea(x, y, r);
+    int valid_point_count = 0;
+
+    for (int i = 0; i < m_point_count; i++)
+    {
+        if (m_hst_edge_x[i] != -1 && ((float*)m_hst_scores)[i] > VALID_POINT_THRESHOLD)
+        {
+            m_hst_edge_x[valid_point_count] = m_hst_edge_x[i];
+            m_hst_edge_y[valid_point_count] = m_hst_edge_y[i];
+            m_hst_scores[valid_point_count] = m_hst_scores[i];
+            valid_point_count += 1;
+        }
+    }
+    
+    // #########################################################
+    // Fitting final circle...
+
+    if (valid_point_count < 3)
+    {
+        return ContentArea();
+    }
+    else if (valid_point_count == 3)
+    {    
+        int ax = m_hst_edge_x[0];
+        int ay = m_hst_edge_y[0];
+        
+        int by = m_hst_edge_y[1];
+        int bx = m_hst_edge_x[1];
+        
+        int cx = m_hst_edge_x[2];
+        int cy = m_hst_edge_y[2];
+
+        float x, y, r;
+        calculate_circle(ax, ay, bx, by, cx, cy, &x, &y, &r);
+
+        return ContentArea(x, y, r);
+    }
+    else
+    {
+        float x, y, r;
+        circle_selection(valid_point_count, m_hst_edge_x, m_hst_edge_y, &x, &y, &r);
+
+        return ContentArea(x, y, r);
+    }
 }
+
+
+
 
 
 std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, const uint image_height, const uint image_width)
 {
-    uint height_gap = image_height / m_height_samples;
-
     dim3 find_points_grid(m_height_samples);
     dim3 find_points_block(warp_size * find_points_warp_count);
-    find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, height_gap, m_height_samples);
+    find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, m_height_samples);
 
     dim3 refine_points_grid(m_point_count);
     dim3 refine_points_block(warp_size);
@@ -504,9 +715,6 @@ std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, con
 
     cudaMemcpy(m_hst_block, m_dev_block, m_buffer_size, cudaMemcpyDeviceToHost);
 
-    int indices[3];
-    select_final_triple(m_point_count, (float*)m_hst_scores, indices);
-
     std::vector<int> points_x, points_y, norm_x, norm_y, scores;
     for (int i = 0; i < m_point_count; i++)
     {
@@ -517,19 +725,12 @@ std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, con
         scores.push_back(m_hst_scores[i]);
     }
 
-    std::vector<int> final_indices;
-    for (int i = 0; i < 3; i++)
-    {
-        final_indices.push_back(indices[i]);
-    }
-
     std::vector<std::vector<int>> result = std::vector<std::vector<int>>();
     result.push_back(points_x);
     result.push_back(points_y);
     result.push_back(norm_x);
     result.push_back(norm_y);
     result.push_back(scores);
-    result.push_back(final_indices);
 
     return result;
 }
