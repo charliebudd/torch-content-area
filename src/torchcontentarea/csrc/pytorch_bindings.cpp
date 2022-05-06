@@ -5,19 +5,20 @@
 #include <cuda_runtime.h>
 #endif
 
-ContentArea area_from_tuple(py::tuple tuple)
+ContentArea area_from_pyobject(py::object object)
 {
-    if (tuple == py::none())
+    if (object == py::none())
     {
         return ContentArea();
     }
     else
     {
-        return ContentArea(tuple[0].cast<uint>(), tuple[1].cast<uint>(), tuple[2].cast<uint>());
+        std::vector<uint> values = object.cast<std::vector<uint>>();
+        return ContentArea(values[0], values[1], values[2]);
     }
 }
 
-py::tuple tuple_from_area(ContentArea area)
+py::object pyobject_from_area(ContentArea area)
 {
     if (area.type == ContentAreaType::None)
     {
@@ -29,7 +30,7 @@ py::tuple tuple_from_area(ContentArea area)
     }
 }
 
-py::tuple infer_area_wrapper(ContentAreaInference &self, torch::Tensor image) 
+py::object infer_area_wrapper(ContentAreaInference &self, torch::Tensor image) 
 {
     image = image.contiguous();
 
@@ -38,15 +39,15 @@ py::tuple infer_area_wrapper(ContentAreaInference &self, torch::Tensor image)
 
     ContentArea area = self.infer_area(image.data_ptr<uint8>(), height, width);
 
-    return tuple_from_area(area);
+    return pyobject_from_area(area);
 }
 
-torch::Tensor draw_area_wrapper(ContentAreaInference &self, torch::Tensor image, py::tuple area_tuple) 
+torch::Tensor draw_area_wrapper(ContentAreaInference &self, torch::Tensor image, py::object area_tuple) 
 {
     uint height = image.size(1);
     uint width = image.size(2);
 
-    ContentArea area = area_from_tuple(area_tuple);
+    ContentArea area = area_from_pyobject(area_tuple);
 
     torch::Tensor mask = torch::empty_like(image[0]);
 
@@ -55,7 +56,7 @@ torch::Tensor draw_area_wrapper(ContentAreaInference &self, torch::Tensor image,
     return mask;
 }
 
-torch::Tensor crop_area_wrapper(ContentAreaInference &self, torch::Tensor src_image, py::tuple area_tuple, std::vector<int> size, const int interpolation_mode)
+torch::Tensor crop_area_wrapper(ContentAreaInference &self, torch::Tensor src_image, py::object area_tuple, std::vector<int> size, const int interpolation_mode)
 {
     uint src_height = src_image.size(1);
     uint src_width = src_image.size(2);
@@ -63,7 +64,7 @@ torch::Tensor crop_area_wrapper(ContentAreaInference &self, torch::Tensor src_im
     uint dst_height = size[0];
     uint dst_width = size[1];
 
-    ContentArea area = area_from_tuple(area_tuple);
+    ContentArea area = area_from_pyobject(area_tuple);
 
     torch::Tensor dst_image = torch::empty({3, dst_height, dst_width}, src_image.options());
 
@@ -85,6 +86,7 @@ torch::Tensor infer_mask_wrapper(ContentAreaInference &self, torch::Tensor image
     torch::Tensor mask = torch::empty_like(image[0]);
 
     ContentArea area = self.infer_area(image.data_ptr<uint8>(), height, width);
+
     self.draw_area(area, mask.data_ptr<uint8>(), height, width);
 
     return mask;
