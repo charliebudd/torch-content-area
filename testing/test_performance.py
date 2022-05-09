@@ -1,6 +1,5 @@
 import unittest
 import torch
-from torchvision.transforms.functional import center_crop
 
 from utils import TestDataset, TestDataLoader, timed, iou_score, perimeter_distance_score
 from torchcontentarea import ContentAreaInference
@@ -28,8 +27,11 @@ class TestPerformance(unittest.TestCase):
         for img, mask, area in self.dataloader:
             
             img, mask = img.cuda(), mask.cuda()
-            img_cropped = center_crop(img, [img.shape[1] // 2, img.shape[2] // 2])
-
+            
+            x_low, x_high = int(img.shape[1] * 0.25), int(img.shape[1] * 0.75)
+            y_low, y_high = int(img.shape[2] * 0.25), int(img.shape[2] * 0.75)
+            img_cropped =img[:, x_low:x_high, y_low:y_high]
+            
             time, infered_area = timed(lambda x: self.content_area_inference.infer_area(x), img)
             infered_area_cropped = self.content_area_inference.infer_area(img_cropped)
 
