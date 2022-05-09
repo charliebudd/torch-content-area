@@ -372,38 +372,59 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float*
     }
 }
 
-bool Cholesky3x3(float* A, float* B)
+bool Cholesky3x3(float lhs[3][3], float rhs[3])
 {
-    #define A(i,j) A[i + j * 3]
-    float Sum;
-    float Diagonal[3];
-    Sum= A(0,0);
-    if (Sum <= 0.f) return false;
-    Diagonal[0]= sqrt(Sum);
-    Sum= A(0,1);
-    A(1,0)= Sum / Diagonal[0];
-    Sum= A(0,2);
-    A(2,0)= Sum / Diagonal[0];
-    Sum= A(1,1) - A(1,0) * A(1,0);
-    if (Sum <= 0.f) return false;
-    Diagonal[1]= sqrt(Sum);
-    Sum= A(1,2) - A(1,0) * A(2,0);
-    A(2,1)= Sum / Diagonal[1];
-    Sum= A(2,2) - A(2,1) * A(2,1) - A(2,0) * A(2,0);
-    if (Sum <= 0.f) return false;
-    Diagonal[2]= sqrt(Sum);
-    Sum= B[0];
-    B[0]= Sum / Diagonal[0];
-    Sum= B[1] - A(1,0) * B[0];
-    B[1]= Sum / Diagonal[1];
-    Sum= B[2] - A(2,1) * B[1] - A(2,0) * B[0];
-    B[2]= Sum / Diagonal[2];
-    Sum= B[2];
-    B[2]= Sum / Diagonal[2];
-    Sum= B[1] - A(2,1) * B[2];
-    B[1]= Sum / Diagonal[1];
-    Sum= B[0] - A(1,0) * B[1] - A(2,0) * B[2];
-    B[0]= Sum / Diagonal[0];
+    float sum;
+    float diagonal[3];
+
+    sum = lhs[0][0];
+
+    if (sum <= 0.f) 
+        return false;
+
+    diagonal[0] = sqrt(sum);
+
+    sum = lhs[0][1];
+    lhs[1][0] = sum / diagonal[0];
+
+    sum = lhs[0][2];
+    lhs[2][0] = sum / diagonal[0];
+
+    sum = lhs[1][1] - lhs[1][0] * lhs[1][0];
+
+    if (sum <= 0.f) 
+        return false;
+
+    diagonal[1] = sqrt(sum);
+
+    sum = lhs[1][2] - lhs[1][0] * lhs[2][0];
+    lhs[2][1] = sum / diagonal[1];
+
+    sum = lhs[2][2] - lhs[2][1] * lhs[2][1] - lhs[2][0] * lhs[2][0];
+
+    if (sum <= 0.f)
+        return false;
+
+    diagonal[2] = sqrt(sum);
+
+    sum = rhs[0];
+    rhs[0] = sum / diagonal[0];
+
+    sum = rhs[1] - lhs[1][0] * rhs[0];
+    rhs[1] = sum / diagonal[1];
+
+    sum = rhs[2] - lhs[2][1] * rhs[1] - lhs[2][0] * rhs[0];
+    rhs[2] = sum / diagonal[2];
+
+    sum = rhs[2];
+    rhs[2] = sum / diagonal[2];
+
+    sum = rhs[1] - lhs[2][1] * rhs[2];
+    rhs[1] = sum / diagonal[1];
+
+    sum = rhs[0] - lhs[1][0] * rhs[1] - lhs[2][0] * rhs[2];
+    rhs[0] = sum / diagonal[0];
+
     return true;
 }
 
@@ -433,10 +454,10 @@ void fit_circle(int point_count, int* indices, uint* points_x, uint* points_y, f
         float p_y = points_y[indices[i]];
 
         lhs[0][0] += p_x * p_x;
-        lhs[1][0] += p_x * p_y;
+        lhs[0][1] += p_x * p_y;
         lhs[1][1] += p_y * p_y;
-        lhs[2][0] += p_x;
-        lhs[2][1] += p_y;
+        lhs[0][2] += p_x;
+        lhs[1][2] += p_y;
         lhs[2][2] += 1;
 
         rhs[0] += p_x * p_x * p_x + p_x * p_y * p_y;
@@ -444,7 +465,7 @@ void fit_circle(int point_count, int* indices, uint* points_x, uint* points_y, f
         rhs[2] += p_x * p_x + p_y * p_y;
     }
 
-    Cholesky3x3((float*)lhs, rhs);
+    Cholesky3x3(lhs, rhs);
 
     float A=rhs[0], B=rhs[1], C=rhs[2];
 
@@ -562,7 +583,8 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     // #########################################################
     // Reading back results...
 
-    cudaMemcpy(m_hst_block, m_dev_block, m_buffer_size, cudaMemcpyDeviceToHost);
+    // cudaMemcpy(m_hst_block, m_dev_block, m_buffer_size, cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
 
     // #########################################################
     // Removing invalid points...
