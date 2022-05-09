@@ -571,20 +571,19 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 
     dim3 refine_points_grid(m_point_count);
     dim3 refine_points_block(warp_size);
-    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, (float*)m_dev_norm_x, (float*)m_dev_norm_y, image_width, image_height, m_height_samples);
+    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, image_width, image_height, m_height_samples);
 
     // #########################################################
     // Evaluating candidate points...
 
     dim3 check_triples_grid(m_point_count);
     dim3 check_triples_block(triangle_size(m_point_count));
-    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, (float*)m_dev_scores, m_point_count, image_height, image_width);
+    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
 
     // #########################################################
     // Reading back results...
 
-    // cudaMemcpy(m_hst_block, m_dev_block, m_buffer_size, cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
+    cudaMemcpy(m_hst_buffer, m_dev_buffer, m_buffer_size, cudaMemcpyDeviceToHost);
 
     // #########################################################
     // Removing invalid points...
@@ -593,7 +592,7 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 
     for (int i = 0; i < m_point_count; i++)
     {
-        if (m_hst_edge_x[i] != -1 && ((float*)m_hst_scores)[i] > VALID_POINT_THRESHOLD)
+        if (m_hst_edge_x[i] != -1 && m_hst_scores[i] > VALID_POINT_THRESHOLD)
         {
             m_hst_edge_x[valid_point_count] = m_hst_edge_x[i];
             m_hst_edge_y[valid_point_count] = m_hst_edge_y[i];
@@ -642,13 +641,13 @@ std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, con
 
     dim3 refine_points_grid(m_point_count);
     dim3 refine_points_block(warp_size);
-    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, (float*)m_dev_norm_x, (float*)m_dev_norm_y, image_width, image_height, m_height_samples);
+    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, image_width, image_height, m_height_samples);
     
     dim3 check_triples_grid(m_point_count);
     dim3 check_triples_block(triangle_size(m_point_count));
-    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, (float*)m_dev_scores, m_point_count, image_height, image_width);
+    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
 
-    cudaMemcpy(m_hst_block, m_dev_block, m_buffer_size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(m_hst_buffer, m_dev_buffer, m_buffer_size, cudaMemcpyDeviceToHost);
 
     std::vector<int> points_x, points_y, norm_x, norm_y, scores;
     for (int i = 0; i < m_point_count; i++)
