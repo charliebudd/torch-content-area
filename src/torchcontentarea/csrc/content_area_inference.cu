@@ -7,25 +7,25 @@ ContentAreaInference::ContentAreaInference()
     m_point_count = 2 * m_height_samples;
     m_buffer_size = 5 * m_point_count * sizeof(uint);
 
-    cudaMalloc(&m_dev_block, m_buffer_size);
-    m_dev_edge_x = m_dev_block + 0 * m_point_count;
-    m_dev_edge_y = m_dev_block + 1 * m_point_count;
-    m_dev_norm_x = m_dev_block + 2 * m_point_count;
-    m_dev_norm_y = m_dev_block + 3 * m_point_count;
-    m_dev_scores = m_dev_block + 4 * m_point_count;
-    
-    cudaMallocHost((void**)&m_hst_block, m_buffer_size);
-    m_hst_edge_x = m_hst_block + 0 * m_point_count;
-    m_hst_edge_y = m_hst_block + 1 * m_point_count;
-    m_hst_norm_x = m_hst_block + 2 * m_point_count;
-    m_hst_norm_y = m_hst_block + 3 * m_point_count;
-    m_hst_scores = m_hst_block + 4 * m_point_count;
+    cudaMallocHost(&m_hst_buffer, m_buffer_size);
+    m_hst_edge_x = (uint*)m_hst_buffer + 0 * m_point_count;
+    m_hst_edge_y = (uint*)m_hst_buffer + 1 * m_point_count;
+    m_hst_norm_x = (float*)m_hst_buffer + 2 * m_point_count;
+    m_hst_norm_y = (float*)m_hst_buffer + 3 * m_point_count;
+    m_hst_scores = (float*)m_hst_buffer + 4 * m_point_count;
+
+    cudaMalloc(&m_dev_buffer, m_buffer_size);
+    m_dev_edge_x = (uint*)m_dev_buffer + 0 * m_point_count;
+    m_dev_edge_y = (uint*)m_dev_buffer + 1 * m_point_count;
+    m_dev_norm_x = (float*)m_dev_buffer + 2 * m_point_count;
+    m_dev_norm_y = (float*)m_dev_buffer + 3 * m_point_count;
+    m_dev_scores = (float*)m_dev_buffer + 4 * m_point_count;
 }
 
 ContentAreaInference::~ContentAreaInference()
 {
-    cudaFree(m_dev_block);
-    cudaFreeHost(m_hst_block);
+    cudaFree(m_dev_buffer);
+    cudaFreeHost(m_hst_buffer);
 }
 
 // ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
