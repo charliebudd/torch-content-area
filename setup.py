@@ -8,7 +8,7 @@ ext_src_dir = "src/torchcontentarea/csrc/"
 ext_source_files = glob(ext_src_dir + "*.cpp") + glob(ext_src_dir + "*.cu")
 
 compile_args = {
-    'cxx': ['-g0'],
+    'cxx': ['-g0', '-O3'],
     'nvcc': ['-O3']
 }
 
