@@ -1,6 +1,6 @@
 import torch
 from enum import IntEnum
-from typing import Sequence
+from typing import Sequence, Optional
 
 import __torchcontentareaext as __ext
 
@@ -18,7 +18,7 @@ class ContentAreaInference(__ext.ContentAreaInference):
         """Infers the content area for a given endoscopic image and returns a binary mask"""
         return self.__infer_mask(image)
 
-    def infer_area(self, image: torch.Tensor) -> Sequence[int]:
+    def infer_area(self, image: torch.Tensor) -> Optional[Sequence[int]]:
         """Infers the content area for a given endoscopic image and returns the parameters of the content area (None if no area found)"""
         return self.__infer_area(image)
 
