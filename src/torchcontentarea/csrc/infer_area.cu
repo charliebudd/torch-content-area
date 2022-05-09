@@ -372,59 +372,6 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float*
     }
 }
 
-float distance_score(const uint height_samples, const uint i, const uint j)
-{
-    float x_diff = (i >= height_samples) != (j >= height_samples);
-    float y_diff = abs(float(i % height_samples) - float(j % height_samples)) / height_samples;
-
-    return sqrt((x_diff * x_diff + y_diff * y_diff) / 2);
-}
-
-void select_final_triple(const uint point_count, const float* scores, int* indices)
-{
-    float best_score = -1.0f;
-
-    uint height_samples = point_count / 2;
-
-    for (int i = 0; i < point_count; i++)
-    {
-        float score_i = scores[i];
-
-        // if (score_i == 0)
-        //     continue;
-
-        for (int j = i+1; j < point_count; j++)
-        {
-            float score_j = scores[j];
-
-            // if (score_j == 0)
-            //     continue;
-
-            for (int k = j+1; k < point_count; k++)
-            {
-                float score_k = scores[k];
-
-                // if (score_k == 0)
-                //     continue;
-
-                float dist_score = distance_score(height_samples, i, j) + distance_score(height_samples, i, k) + distance_score(height_samples, j, k);
-                float score = (score_i + score_j + score_k);
-
-                score = score * (dist_score + 15);
-
-                if (score > best_score)
-                {
-                    best_score = score;
-                    
-                    indices[0] = i;
-                    indices[1] = j;
-                    indices[2] = k;
-                }
-            }
-        }
-    }
-}
-
 bool Cholesky3x3(float* A, float* B)
 {
     #define A(i,j) A[i + j * 3]
@@ -460,9 +407,9 @@ bool Cholesky3x3(float* A, float* B)
     return true;
 }
 
-void fit_circle(const std::vector<int> indices, uint* points_x, uint* points_y, float* circle_x, float* circle_y, float* circle_r)
+void fit_circle(int point_count, int* indices, uint* points_x, uint* points_y, float* circle_x, float* circle_y, float* circle_r)
 {
-    if (indices.size() == 3)
+    if (point_count == 3)
     {
         int ax = points_x[indices[0]];
         int ay = points_y[indices[0]];
@@ -477,41 +424,26 @@ void fit_circle(const std::vector<int> indices, uint* points_x, uint* points_y, 
         return;
     }
    
-    float x=0, y=0, xy=0, xx=0, yy=0;
-    float xxx=0, xxy=0, xyy=0, yyy=0;
-    float n = indices.size();
+    float lhs[3][3] {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
+    float rhs[3] {0, 0, 0};
 
-    for (int i : indices)
+    for (int i = 0; i < point_count; i++)
     {
-        float p_x = points_x[i];
-        float p_y = points_y[i];
+        float p_x = points_x[indices[i]];
+        float p_y = points_y[indices[i]];
 
-        x   += p_x;
-        y   += p_y;
-        xy  += p_x * p_y;
-        xx  += p_x * p_x;
-        yy  += p_y * p_y;
-        xxx += p_x * p_x * p_x;
-        xxy += p_x * p_x * p_y;
-        xyy += p_x * p_y * p_y;
-        yyy += p_y * p_y * p_y;
+        lhs[0][0] += p_x * p_x;
+        lhs[1][0] += p_x * p_y;
+        lhs[1][1] += p_y * p_y;
+        lhs[2][0] += p_x;
+        lhs[2][1] += p_y;
+        lhs[2][2] += 1;
+
+        rhs[0] += p_x * p_x * p_x + p_x * p_y * p_y;
+        rhs[1] += p_x * p_x * p_y + p_y * p_y * p_y;
+        rhs[2] += p_x * p_x + p_y * p_y;
     }
 
-
-    float lhs[3][3] {
-        {xx, xy,  x},
-        {xy, yy,  y},
-        { x,  y,  n},
-    };
-
-    float rhs[3] {
-        xxx + xyy,
-        xxy + yyy,
-         xx +  yy
-    };
-
-    // solves set of equations lhs T = rhs for T
-    // answer writen into rhs
     Cholesky3x3((float*)lhs, rhs);
 
     float A=rhs[0], B=rhs[1], C=rhs[2];
@@ -532,55 +464,58 @@ void circle_selection(const uint point_count, uint* points_x, uint* points_y, fl
 {
     int best_inlier_count = 0;
 
-    for (int iter = 0; iter < MAX_RANSAC_ITERATIONS; iter++)
-    {
-        int a, b, c;
-        random_triplet(point_count, a, b, c);
+    int* new_inliers = new int[point_count];
+    int* old_inliers = new int[point_count];
 
-        std::vector<int>* new_inliers = new std::vector<int>{a, b, c};
-        std::vector<int>* old_inliers = new std::vector<int>();
+    int new_inlier_count = 0;
+    int old_inlier_count = 0;
+
+    for (int i = 0; i < MAX_RANSAC_ITERATIONS; i++)
+    {
+        new_inlier_count = 3;
+        random_triplet(point_count, new_inliers[0], new_inliers[1], new_inliers[2]);
 
         float new_circle_x, new_circle_y, new_circle_r;
 
         while (true)
         {
-            fit_circle(*new_inliers, points_x, points_y, &new_circle_x, &new_circle_y, &new_circle_r);
+            fit_circle(new_inlier_count, new_inliers, points_x, points_y, &new_circle_x, &new_circle_y, &new_circle_r);
             
-            // Break if all points fit...
-            if (new_inliers->size() == point_count)
+            if (new_inlier_count == point_count)
             {
                 break;
             }
 
             std::swap(new_inliers, old_inliers);
 
-            new_inliers->clear();
+            old_inlier_count = new_inlier_count;
+            new_inlier_count = 0;
 
-            for (int i = 0; i < point_count; i++)
+            bool no_change = true;
+
+            for (int point_index = 0; point_index < point_count; point_index++)
             {
-                int x = points_x[i];
-                int y = points_y[i];
-
-                float delta_x = x - new_circle_x;
-                float delta_y = y - new_circle_y;
+                float delta_x = points_x[point_index] - new_circle_x;
+                float delta_y = points_y[point_index] - new_circle_y;
 
                 float delta = sqrt(delta_x * delta_x + delta_y * delta_y);
                 float error = abs(new_circle_r - delta);
 
                 if (error < INLIER_THRESHOLD)
                 {
-                    new_inliers->push_back(i);
+                    no_change &= old_inliers[new_inlier_count] == point_index;
+                    new_inliers[new_inlier_count] = point_index;
+                    new_inlier_count++;
                 }
             }
 
-            // Break if at dead end...
-            if (new_inliers->size() < 3 || (new_inliers->size() == old_inliers->size() && std::equal(new_inliers->begin(), new_inliers->end(), old_inliers->begin())))
+            no_change &= new_inlier_count == old_inlier_count;
+
+            if (new_inlier_count < 3 || no_change)
             {
                 break;
             }
         }
-
-        int new_inlier_count = new_inliers->size();
 
         if (new_inlier_count > best_inlier_count)
         {
@@ -596,6 +531,9 @@ void circle_selection(const uint point_count, uint* points_x, uint* points_y, fl
             break;
         }
     }
+
+    delete new_inliers;
+    delete old_inliers;
 }
 
 #define warp_size 32
@@ -605,7 +543,6 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 {
     // #########################################################
     // Finding candididate points...
-    // A thread block for each point
 
     dim3 find_points_grid(m_height_samples);
     dim3 find_points_block(warp_size * find_points_warp_count);
@@ -617,8 +554,6 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 
     // #########################################################
     // Evaluating candidate points...
-    // A thread block for each point (left and right)
-    // A thread per combination of the other two points in each triple.
 
     dim3 check_triples_grid(m_point_count);
     dim3 check_triples_block(triangle_size(m_point_count));
@@ -628,24 +563,6 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     // Reading back results...
 
     cudaMemcpy(m_hst_block, m_dev_block, m_buffer_size, cudaMemcpyDeviceToHost);
-
-    // #########################################################
-    // Choosing the final points and calculating circle...
-
-    // int indices[3] {0, 1, 2};
-    // select_final_triple(m_point_count, (float*)m_hst_scores, indices);
-
-    // int ax = m_hst_edge_x[indices[0]];
-    // int ay = m_hst_edge_y[indices[0]];
-    
-    // int by = m_hst_edge_y[indices[1]];
-    // int bx = m_hst_edge_x[indices[1]];
-    
-    // int cx = m_hst_edge_x[indices[2]];
-    // int cy = m_hst_edge_y[indices[2]];
-
-    // float x, y, r;
-    // calculate_circle(ax, ay, bx, by, cx, cy, &x, &y, &r);
 
     // #########################################################
     // Removing invalid points...
@@ -694,10 +611,6 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
         return ContentArea(x, y, r);
     }
 }
-
-
-
-
 
 std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, const uint image_height, const uint image_width)
 {
