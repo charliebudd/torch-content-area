@@ -270,7 +270,8 @@ __device__ void square_indices(const int k, const int n, uint* i, uint* j)
     *j = k + *i + 1 -  n * (n - 1) / 2 + (n - *i) * ((n - *i) - 1) / 2;
 }
 
-__global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float* g_edge_scores, const uint point_count, const uint image_height, const uint image_width)
+// __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float* scores_out, const uint point_count, const uint image_height, const uint image_width)
+__global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, const uint point_count, const uint image_height, const uint image_width, uint* edge_x_out, uint* edge_y_out, float* scores_out)
 {
     __shared__ uint s_edge_x[MAX_POINT_COUNT];
     __shared__ uint s_edge_y[MAX_POINT_COUNT];
@@ -367,7 +368,9 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float*
         // Outputting result
         if (lane_index == 0)
         {
-            g_edge_scores[a_index] = score / ((blockDim.x - (point_count - 1)) * point_count);
+            edge_x_out[a_index] = s_edge_x[a_index];
+            edge_y_out[a_index] = s_edge_y[a_index];
+            scores_out[a_index] = score / ((blockDim.x - (point_count - 1)) * point_count);
         }
     }
 }
@@ -578,12 +581,17 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 
     dim3 check_triples_grid(m_point_count);
     dim3 check_triples_block(triangle_size(m_point_count));
-    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
+    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_point_count, image_height, image_width, m_dev_mapped_edge_x, m_dev_mapped_edge_y, m_dev_mapped_scores);
+    // check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
+
+    // cudaMemcpy(m_hst_buffer, m_dev_buffer, m_buffer_size, cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+
 
     // #########################################################
     // Reading back results...
 
-    cudaMemcpy(m_hst_buffer, m_dev_buffer, m_buffer_size, cudaMemcpyDeviceToHost);
+    // cudaMemcpy(m_hst_buffer, m_dev_buffer, m_buffer_size, cudaMemcpyDeviceToHost);
 
     // #########################################################
     // Removing invalid points...
@@ -643,11 +651,11 @@ std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, con
     dim3 refine_points_block(warp_size);
     refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, image_width, image_height, m_height_samples);
     
-    dim3 check_triples_grid(m_point_count);
-    dim3 check_triples_block(triangle_size(m_point_count));
-    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
+    // dim3 check_triples_grid(m_point_count);
+    // dim3 check_triples_block(triangle_size(m_point_count));
+    // check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
 
-    cudaMemcpy(m_hst_buffer, m_dev_buffer, m_buffer_size, cudaMemcpyDeviceToHost);
+    // cudaMemcpy(m_hst_buffer, m_dev_buffer, m_buffer_size, cudaMemcpyDeviceToHost);
 
     std::vector<int> points_x, points_y, norm_x, norm_y, scores;
     for (int i = 0; i < m_point_count; i++)

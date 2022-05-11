@@ -39,4 +39,12 @@ private:
     void *m_dev_buffer;
     uint *m_dev_edge_x, *m_dev_edge_y;
     float *m_dev_norm_x, *m_dev_norm_y, *m_dev_scores;
+
+    void *m_hst_mapped;
+    uint *m_hst_mapped_edge_x, *m_hst_mapped_edge_y;
+    float *m_hst_mapped_scores;
+    
+    void *m_dev_mapped;
+    uint *m_dev_mapped_edge_x, *m_dev_mapped_edge_y;
+    float *m_dev_mapped_scores;
 };
