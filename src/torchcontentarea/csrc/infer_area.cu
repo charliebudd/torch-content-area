@@ -258,6 +258,20 @@ __host__ __device__ bool calculate_circle(float ax, float ay, float bx, float by
     return valid;
 }
 
+__host__ __device__ bool check_circle(float x, float y, float r, uint image_width, uint image_height)
+{
+    float x_diff = x - 0.5 * image_width;
+    float y_diff = y - 0.5 * image_height;
+    float diff = sqrt(x_diff * x_diff + y_diff * y_diff);
+
+    bool valid = true;
+    valid &= diff < MAX_CENTER_DIST * image_width;
+    valid &= r > MIN_RADIUS * image_width;
+    valid &= r < MAX_RADIUS * image_width;
+    
+    return valid;
+}
+
 __host__ __device__ uint triangle_size(const uint n)
 {
     return n * (n - 1) / 2;
@@ -301,20 +315,11 @@ __global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float*
     float cx = s_edge_x[c_index];
     float cy = s_edge_y[c_index];
 
+    bool valid = ax > 1 && ax < image_width - 2 && bx > 1 && bx < image_width - 2 && cx > 1 && cx < image_width - 2;
+
     float x, y, r;
-    bool valid = calculate_circle(ax, ay, bx, by, cx, cy, &x, &y, &r);
-
-    float x_diff = x - 0.5 * image_width;
-    float y_diff = y - 0.5 * image_height;
-    float diff = sqrt(x_diff * x_diff + y_diff * y_diff);
-
-    // Filter out bad circles
-    valid &= ax > 1 & ax < image_width - 2;
-    valid &= bx > 1 & bx < image_width - 2;
-    valid &= cx > 1 & cx < image_width - 2;
-    valid &= diff < MAX_CENTER_DIST * image_width;
-    valid &= r > MIN_RADIUS * image_width;
-    valid &= r < MAX_RADIUS * image_width;
+    valid &= calculate_circle(ax, ay, bx, by, cx, cy, &x, &y, &r);
+    valid &= check_circle(x, y, r, image_width, image_height);
 
     float score = 0.0f;
 
@@ -430,21 +435,6 @@ bool Cholesky3x3(float lhs[3][3], float rhs[3])
 
 void fit_circle(int point_count, int* indices, uint* points_x, uint* points_y, float* circle_x, float* circle_y, float* circle_r)
 {
-    if (point_count == 3)
-    {
-        int ax = points_x[indices[0]];
-        int ay = points_y[indices[0]];
-        
-        int bx = points_x[indices[1]];
-        int by = points_y[indices[1]];
-        
-        int cx = points_x[indices[2]];
-        int cy = points_y[indices[2]];
-
-        calculate_circle(ax, ay, bx, by, cx, cy, circle_x, circle_y, circle_r);
-        return;
-    }
-   
     float lhs[3][3] {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
     float rhs[3] {0, 0, 0};
 
@@ -498,7 +488,7 @@ void circle_selection(const uint point_count, uint* points_x, uint* points_y, fl
 
         float new_circle_x, new_circle_y, new_circle_r;
 
-        while (true)
+        for (int j = 0; j < MAX_RANSAC_ITERATIONS; j++)
         {
             fit_circle(new_inlier_count, new_inliers, points_x, points_y, &new_circle_x, &new_circle_y, &new_circle_r);
             
@@ -656,7 +646,7 @@ std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, con
         points_y.push_back(m_hst_edge_y[i]);
         norm_x.push_back(m_hst_norm_x[i]);
         norm_y.push_back(m_hst_norm_y[i]);
-        scores.push_back(m_hst_scores[i]);
+        scores.push_back(((int*)m_hst_scores)[i]);
     }
 
     std::vector<std::vector<int>> result = std::vector<std::vector<int>>();
