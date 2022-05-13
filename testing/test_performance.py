@@ -28,9 +28,9 @@ class TestPerformance(unittest.TestCase):
             
             img, mask = img.cuda(), mask.cuda()
             
-            x_low, x_high = int(img.shape[1] * 0.25), int(img.shape[1] * 0.75)
-            y_low, y_high = int(img.shape[2] * 0.25), int(img.shape[2] * 0.75)
-            img_cropped =img[:, x_low:x_high, y_low:y_high]
+            x_low, x_high = int(img.shape[1] * 0.3), int(img.shape[1] * 0.7)
+            y_low, y_high = int(img.shape[2] * 0.3), int(img.shape[2] * 0.7)
+            img_cropped = img[:, x_low:x_high, y_low:y_high]
             
             time, infered_area = timed(lambda x: self.content_area_inference.infer_area(x), img)
             infered_area_cropped = self.content_area_inference.infer_area(img_cropped)
@@ -51,20 +51,38 @@ class TestPerformance(unittest.TestCase):
 
             times.append(time)
 
-        avg_time = sum(times) / len(times)
-        avg_error = sum(errors) / len(errors)
-        miss_percentage = 100 * sum(map(lambda x: x > MISS_THRESHOLD, errors)) / len(errors)
-        bad_miss_percentage = 100 * sum(map(lambda x: x > BAD_MISS_THRESHOLD, errors)) / len(errors)
-        classification_accuracy = (true_positives + true_negatives) / (true_positives + true_negatives + false_positives + false_negatives)
-
         gpu_name = torch.cuda.get_device_name()
+        avg_time = sum(times) / len(times)
 
+        classification_accuracy = (true_positives + true_negatives) / (true_positives + true_negatives + false_positives + false_negatives)
+        fn_rate = false_negatives / (true_negatives + false_negatives) if true_negatives + false_negatives > 0 else 1.0
+        fp_rate = false_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 1.0
+
+        avg_error = sum(errors) / len(errors) if len(errors) > 0 else 0.0
+        miss_percentage = 100 * sum(map(lambda x: x > MISS_THRESHOLD, errors)) / len(errors) if len(errors) > 0 else 0.0
+        bad_miss_percentage = 100 * sum(map(lambda x: x > BAD_MISS_THRESHOLD, errors)) / len(errors) if len(errors) > 0 else 0.0
+
+        print("\n")
         print(f'Performance Results...')
         print(f'- Avg Time ({gpu_name}): {avg_time:.3f}ms')
-        print(f'- Avg Error (Perimeter Distance): {avg_error:.3f}px')
-        print(f'- Misses (Error > {MISS_THRESHOLD}px): {miss_percentage:.1f}%')
-        print(f'- Bad Misses (Error > {BAD_MISS_THRESHOLD}px): {bad_miss_percentage:.1f}%')
+        print(f'- Avg Error (Mean Perimeter Distance): {avg_error:.3f}px')
+        print(f'- Miss Rate (Error > {MISS_THRESHOLD}px): {miss_percentage:.1f}%')
+        print(f'- Bad Miss Rate (Error > {BAD_MISS_THRESHOLD}px): {bad_miss_percentage:.1f}%')
         print(f'- Classification Accuracy: {100 * classification_accuracy:.1f}%')
+        print(f'- False Negative Rate: {100 * fn_rate:.1f}%')
+        print(f'- False Positive Rate: {100 * fp_rate:.1f}%')
+        print("\n")
+
+        try:
+            times = self.content_area_inference.get_times()
+            if len(times) > 0:
+                print("\nProfiling Data...")
+                print("{:<20} {:<20} {:<20} {:<20}".format('section','cuda(μs)','cpu(μs)', 'overall(μs)'))
+                for name, time in times:
+                    print("{:<20} {:<20} {:<20} {:<20}".format(name, int(time[0]), int(time[1]), int(time[2])))
+                print("\n")
+        except:
+            pass
 
         self.assertTrue(avg_time < 0.5)
         self.assertTrue(avg_error < 10)
