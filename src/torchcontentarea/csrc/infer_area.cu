@@ -10,7 +10,8 @@
 #define ANGLE_THRESHOLD 26
 #define INLIER_THRESHOLD 4.0f
 #define MAX_RANSAC_ITERATIONS 10
-#define VALID_POINT_THRESHOLD 0.03
+#define VALID_POINT_THRESHOLD 0.005
+#define STRICT_VALID_POINT_THRESHOLD 0.05
 
 #define MAX_POINT_COUNT 32
 #define DEG2RAD 0.01745329251f
@@ -31,6 +32,103 @@ __device__ float sobel_filter(const float* data, const uint index, const uint x_
     *y_grad = bot - top;
 
     return sqrt(*x_grad * *x_grad + *y_grad * *y_grad);
+}
+
+template<int warp_count>
+__global__ void border_guess(const uint8* g_image, const uint image_width, const uint image_height, float* g_x, float* g_xx)
+{
+    constexpr uint warp_size = 32;
+    constexpr uint thread_count = warp_count * warp_size;
+
+    __shared__ float x_reduction[32];
+    __shared__ float xx_reduction[32];
+    
+    uint lane_index = threadIdx.x;
+    uint warp_index = threadIdx.y;
+
+    int image_x, image_y;
+
+    float means[5];
+
+    for (int i = 0; i < 5; i++)
+    {
+        if (i == 0)
+        {
+            image_x = threadIdx.x;
+            image_y = threadIdx.y;
+        }
+        
+        if (i == 1)
+        {
+            image_x = (image_width - 1) - threadIdx.x;
+            image_y = threadIdx.y;
+        }
+        
+        if (i == 2)
+        {
+            image_x = threadIdx.x;
+            image_y = (image_height - 1) - threadIdx.y;
+        }
+        
+        if (i == 3)
+        {
+            image_x = (image_width - 1) - threadIdx.x;
+            image_y = (image_height - 1) - threadIdx.y;
+        }
+        
+        if (i == 4)
+        {
+            image_x = (image_width / 2 - 16) + threadIdx.x;
+            image_y = (image_height / 2 - 16) + threadIdx.y;
+        }
+
+        float x = 0;
+        float xx = 0;
+
+        for (int c = 0; c < 3; c++)
+        {
+            float value = g_image[image_x + image_y * image_width + c * image_width * image_height];
+
+            x += value;
+            xx += value * value;
+        }
+
+        // warp reduction....
+        #pragma unroll
+        for (int offset = warp_size >> 1; offset > 0; offset >>= 1)
+        {
+           x += __shfl_down_sync(0xffffffff, x, offset);
+           xx += __shfl_down_sync(0xffffffff, xx, offset);
+        }
+
+        if (lane_index == 0)
+        {
+            x_reduction[warp_index] = x;
+            xx_reduction[warp_index] = xx;
+        }
+
+        __syncthreads();
+
+        // block reduction....
+        if (warp_index == 0 && lane_index < warp_count)
+        {
+            x = x_reduction[lane_index];
+            xx = xx_reduction[lane_index];
+
+            #pragma unroll
+            for (int offset = warp_count >> 1 ; offset > 0; offset >>= 1)
+            {
+                x += __shfl_down_sync(0xffffffff, x, offset);
+                xx += __shfl_down_sync(0xffffffff, xx, offset);
+            }
+
+            if (lane_index == 0)
+            {
+                g_x[i] = x;
+                g_xx[i] = xx;
+            }
+        }
+    }
 }
 
 template<int warp_count>
@@ -553,6 +651,48 @@ void circle_selection(const uint point_count, uint* points_x, uint* points_y, fl
 ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
 {
     // #########################################################
+    // Guess if border...
+
+    void *hst_guess, *dev_guess;
+
+    cudaMallocHost(&hst_guess, 2 * 5 * sizeof(float));
+    cudaMalloc(&dev_guess, 2 * 5 * sizeof(float));
+
+    float* x_hst = (float*)hst_guess;
+    float* xx_hst = (float*)hst_guess + 5;
+
+    float* x_dev = (float*)dev_guess;
+    float* xx_dev = (float*)dev_guess + 5;
+
+    int thread_count = 32 * 32;
+
+    dim3 border_guess_grid(1);
+    dim3 border_guess_block(32, 32);
+    border_guess<32><<<border_guess_grid, border_guess_block>>>(image, image_width, image_height, x_dev, xx_dev);
+
+    cudaMemcpy(hst_guess, dev_guess, 2 * 5 * sizeof(float), cudaMemcpyDeviceToHost);
+
+    float corner_x_sum = x_hst[0] + x_hst[1] + x_hst[2] + x_hst[3];
+    float corner_xx_sum = xx_hst[0] + xx_hst[1] + xx_hst[2] + xx_hst[3];
+
+    float middle_x_sum = x_hst[4];
+    float middle_xx_sum = xx_hst[4];
+
+    float corner_x_mean = corner_x_sum / (4 * thread_count * 3);
+    float middle_x_mean = middle_x_sum / (thread_count * 3);
+
+    float corner_xx_mean = corner_xx_sum / (4 * thread_count * 3);
+    float middle_xx_mean = middle_xx_sum / (thread_count * 3);
+
+    float corner_std = sqrt(corner_xx_mean - corner_x_mean * corner_x_mean);
+    float middle_std = sqrt(middle_xx_mean - middle_x_mean * middle_x_mean);
+
+    bool border = abs(corner_x_mean - middle_x_mean) > (corner_std + middle_std);
+
+    cudaFreeHost(hst_guess);
+    cudaFree(dev_guess);
+
+    // #########################################################
     // Finding candididate points...
 
     dim3 find_points_grid(m_height_samples);
@@ -580,9 +720,12 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 
     int valid_point_count = 0;
 
+    float threshold = border ? VALID_POINT_THRESHOLD : STRICT_VALID_POINT_THRESHOLD;
+    // float threshold = VALID_POINT_THRESHOLD;
+
     for (int i = 0; i < m_point_count; i++)
     {
-        if (m_hst_edge_x[i] != -1 && m_hst_scores[i] > VALID_POINT_THRESHOLD)
+        if ((m_hst_edge_x[i] != -1 && m_hst_scores[i] > threshold))
         {
             m_hst_edge_x[valid_point_count] = m_hst_edge_x[i];
             m_hst_edge_y[valid_point_count] = m_hst_edge_y[i];
