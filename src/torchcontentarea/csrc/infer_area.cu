@@ -40,95 +40,102 @@ __global__ void border_guess(const uint8* g_image, const uint image_width, const
     constexpr uint warp_size = 32;
     constexpr uint thread_count = warp_count * warp_size;
 
-    __shared__ float x_reduction[32];
-    __shared__ float xx_reduction[32];
+    __shared__ float x_reduction[warp_count];
+    __shared__ float xx_reduction[warp_count];
     
-    uint lane_index = threadIdx.x;
-    uint warp_index = threadIdx.y;
+    uint thread_index = threadIdx.x + threadIdx.y * blockDim.x;
+    uint warp_index = thread_index >> 5;
+    uint lane_index = thread_index & 31;
 
     int image_x, image_y;
 
-    float means[5];
-
-    for (int i = 0; i < 5; i++)
+    switch (blockIdx.x)
     {
-        if (i == 0)
+        case (0):
         {
             image_x = threadIdx.x;
             image_y = threadIdx.y;
         }
+        break;
         
-        if (i == 1)
+        case (1):
         {
             image_x = (image_width - 1) - threadIdx.x;
             image_y = threadIdx.y;
         }
+        break;
         
-        if (i == 2)
+        case (2):
         {
             image_x = threadIdx.x;
             image_y = (image_height - 1) - threadIdx.y;
         }
+        break;
         
-        if (i == 3)
+        case (3):
         {
             image_x = (image_width - 1) - threadIdx.x;
             image_y = (image_height - 1) - threadIdx.y;
         }
+        break;
         
-        if (i == 4)
-        {   
-            float stride_x = 6;
-            float stride_y = 6;
-            image_x = (image_width / 2 - stride_x * 16) + stride_x * (threadIdx.x + 0.5);
-            image_y = (image_height / 2 - stride_y * 16) + stride_y * (threadIdx.y + 0.5);
+        case (4):
+        {  
+            float stride_x = (image_width - 2 * blockDim.x) / blockDim.x;
+            float stride_y = (image_height - 2 * blockDim.y) / blockDim.y;
+    
+            image_x = (image_width / 2 - stride_x * 0.5 * blockDim.x) + stride_x * (threadIdx.x + 0.5);
+            image_y = (image_height / 2 - stride_y * 0.5 * blockDim.y) + stride_y * (threadIdx.y + 0.5);
         }
+        break;
+    }
 
-        float x = 0;
-        float xx = 0;
+    
+    float x = 0;
+    float xx = 0;
 
-        for (int c = 0; c < 3; c++)
-        {
-            float value = g_image[image_x + image_y * image_width + c * image_width * image_height];
+    for (int c = 0; c < 3; c++)
+    {
+        float value = g_image[image_x + image_y * image_width + c * image_width * image_height];
 
-            x += value;
-            xx += value * value;
-        }
+        x += value;
+        xx += value * value;
+    }
 
-        // warp reduction....
+    // warp reduction....
+    #pragma unroll
+    for (int offset = warp_size >> 1; offset > 0; offset >>= 1)
+    {
+        x += __shfl_down_sync(0xffffffff, x, offset);
+        xx += __shfl_down_sync(0xffffffff, xx, offset);
+    }
+
+    if (lane_index == 0)
+    {
+        x_reduction[warp_index] = x;
+        xx_reduction[warp_index] = xx;
+    }
+
+    __syncthreads();
+
+    // block reduction....
+    if (warp_index == 0 && lane_index < warp_count)
+    {
+        x = x_reduction[lane_index];
+        xx = xx_reduction[lane_index];
+
         #pragma unroll
-        for (int offset = warp_size >> 1; offset > 0; offset >>= 1)
+        for (int offset = warp_count >> 1 ; offset > 0; offset >>= 1)
         {
-           x += __shfl_down_sync(0xffffffff, x, offset);
-           xx += __shfl_down_sync(0xffffffff, xx, offset);
+            x += __shfl_down_sync(0xffffffff, x, offset);
+            xx += __shfl_down_sync(0xffffffff, xx, offset);
         }
 
         if (lane_index == 0)
         {
-            x_reduction[warp_index] = x;
-            xx_reduction[warp_index] = xx;
-        }
-
-        __syncthreads();
-
-        // block reduction....
-        if (warp_index == 0 && lane_index < warp_count)
-        {
-            x = x_reduction[lane_index];
-            xx = xx_reduction[lane_index];
-
-            #pragma unroll
-            for (int offset = warp_count >> 1 ; offset > 0; offset >>= 1)
-            {
-                x += __shfl_down_sync(0xffffffff, x, offset);
-                xx += __shfl_down_sync(0xffffffff, xx, offset);
-            }
-
-            if (lane_index == 0)
-            {
-                g_x[i] = x;
-                g_xx[i] = xx;
-            }
+            int count = 3 * blockDim.x * blockDim.y;
+            g_x[blockIdx.x] = x / count;
+            g_xx[blockIdx.x] = xx / count;
         }
     }
 }
@@ -154,10 +161,8 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     remainder -= image_x;
 
     int strip_index = blockIdx.x;
-    int strip_height = (strip_index + 0.5) * image_height / strip_count;
-    // More points at the extremes...
-    // strip_height = image_height / (1.0f + exp(-(strip_index - strip_count / 2.0f + 0.5f)));
-
+    int strip_height = image_height / (1.0f + exp(-(strip_index - strip_count / 2.0f + 0.5f)));
+    
     #pragma unroll
     for (int y = 0; y < 3; y++)
     {
@@ -654,45 +659,10 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 {
     // #########################################################
     // Guess if border...
-
-    void *hst_guess, *dev_guess;
-
-    cudaMallocHost(&hst_guess, 2 * 5 * sizeof(float));
-    cudaMalloc(&dev_guess, 2 * 5 * sizeof(float));
-
-    float* x_hst = (float*)hst_guess;
-    float* xx_hst = (float*)hst_guess + 5;
-
-    float* x_dev = (float*)dev_guess;
-    float* xx_dev = (float*)dev_guess + 5;
-
-    int thread_count = 32 * 32;
-
-    dim3 border_guess_grid(1);
-    dim3 border_guess_block(32, 32);
-    border_guess<32><<<border_guess_grid, border_guess_block>>>(image, image_width, image_height, x_dev, xx_dev);
-
-    cudaMemcpy(hst_guess, dev_guess, 2 * 5 * sizeof(float), cudaMemcpyDeviceToHost);
-
-    float corner_x_sum = x_hst[0] + x_hst[1] + x_hst[2] + x_hst[3];
-    float corner_xx_sum = xx_hst[0] + xx_hst[1] + xx_hst[2] + xx_hst[3];
-
-    float middle_x_sum = x_hst[4];
-    float middle_xx_sum = xx_hst[4];
-
-    float corner_x_mean = corner_x_sum / (4 * thread_count * 3);
-    float middle_x_mean = middle_x_sum / (thread_count * 3);
-
-    float corner_xx_mean = corner_xx_sum / (4 * thread_count * 3);
-    float middle_xx_mean = middle_xx_sum / (thread_count * 3);
-
-    float corner_std = sqrt(corner_xx_mean - corner_x_mean * corner_x_mean);
-    float middle_std = sqrt(middle_xx_mean - middle_x_mean * middle_x_mean);
-
-    bool border = abs(corner_x_mean - middle_x_mean) > (corner_std + middle_std);
-
-    cudaFreeHost(hst_guess);
-    cudaFree(dev_guess);
+    
+    dim3 border_guess_grid(5);
+    dim3 border_guess_block(8, 8);
+    border_guess<2><<<border_guess_grid, border_guess_block>>>(image, image_width, image_height, m_dev_x_sums, m_dev_xx_sums);
 
     // #########################################################
     // Finding candididate points...
@@ -718,12 +688,25 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     cudaMemcpy(m_hst_buffer, m_dev_buffer, m_buffer_size, cudaMemcpyDeviceToHost);
 
     // #########################################################
+    // Checking border...
+
+    float corner_x_mean = (m_hst_x_sums[0] + m_hst_x_sums[1] + m_hst_x_sums[2] + m_hst_x_sums[3]) / 4;
+    float corner_xx_mean = (m_hst_xx_sums[0] + m_hst_xx_sums[1] + m_hst_xx_sums[2] + m_hst_xx_sums[3]) / 4;
+
+    float middle_x_mean = m_hst_x_sums[4];
+    float middle_xx_mean = m_hst_xx_sums[4];
+
+    float corner_std = sqrt(corner_xx_mean - corner_x_mean * corner_x_mean);
+    float middle_std = sqrt(middle_xx_mean - middle_x_mean * middle_x_mean);
+
+    bool border = abs(corner_x_mean - middle_x_mean) > (corner_std + middle_std);
+
+    // #########################################################
     // Removing invalid points...
 
     int valid_point_count = 0;
 
     float threshold = border ? VALID_POINT_THRESHOLD : STRICT_VALID_POINT_THRESHOLD;
-    // float threshold = VALID_POINT_THRESHOLD;
 
     for (int i = 0; i < m_point_count; i++)
     {
