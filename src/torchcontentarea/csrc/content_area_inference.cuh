@@ -35,8 +35,10 @@ private:
     void *m_hst_buffer;
     uint *m_hst_edge_x, *m_hst_edge_y;
     float *m_hst_norm_x, *m_hst_norm_y, *m_hst_scores;
+    float *m_hst_x_sums, *m_hst_xx_sums;
     
     void *m_dev_buffer;
     uint *m_dev_edge_x, *m_dev_edge_y;
     float *m_dev_norm_x, *m_dev_norm_y, *m_dev_scores;
+    float *m_dev_x_sums, *m_dev_xx_sums;
 };
