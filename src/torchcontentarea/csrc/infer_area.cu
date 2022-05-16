@@ -12,6 +12,7 @@
 #define MAX_RANSAC_ITERATIONS 10
 #define VALID_POINT_THRESHOLD 0.005
 #define STRICT_VALID_POINT_THRESHOLD 0.03
+#define REQUIRED_VALID_POINT_COUNT 4
 
 #define MAX_POINT_COUNT 32
 #define DEG2RAD 0.01745329251f
@@ -654,6 +655,8 @@ void circle_selection(const uint point_count, uint* points_x, uint* points_y, fl
 
 #define warp_size 32
 #define find_points_warp_count 16
+#define border_guess_sample_size 8
+#define border_guess_warp_count 2
 
 ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
 {
@@ -661,8 +664,8 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     // Guess if border...
     
     dim3 border_guess_grid(5);
-    dim3 border_guess_block(8, 8);
-    border_guess<2><<<border_guess_grid, border_guess_block>>>(image, image_width, image_height, m_dev_x_sums, m_dev_xx_sums);
+    dim3 border_guess_block(border_guess_sample_size, border_guess_sample_size);
+    border_guess<border_guess_warp_count><<<border_guess_grid, border_guess_block>>>(image, image_width, image_height, m_dev_x_sums, m_dev_xx_sums);
 
     // #########################################################
     // Finding candididate points...
@@ -722,32 +725,17 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     // #########################################################
     // Fitting final circle...
 
-    if (valid_point_count < 3)
+    if (valid_point_count < REQUIRED_VALID_POINT_COUNT)
     {
         return ContentArea();
-    }
-    else if (valid_point_count == 3)
-    {    
-        int ax = m_hst_edge_x[0];
-        int ay = m_hst_edge_y[0];
-        
-        int by = m_hst_edge_y[1];
-        int bx = m_hst_edge_x[1];
-        
-        int cx = m_hst_edge_x[2];
-        int cy = m_hst_edge_y[2];
-
-        float x, y, r;
-        calculate_circle(ax, ay, bx, by, cx, cy, &x, &y, &r);
-
-        return ContentArea(x, y, r);
     }
     else
     {
         float x, y, r;
         circle_selection(valid_point_count, m_hst_edge_x, m_hst_edge_y, &x, &y, &r);
+        bool valid = check_circle(x, y, r, image_width, image_height);
 
-        return ContentArea(x, y, r);
+        return valid ? ContentArea(x, y, r) : ContentArea();
     }
 }
 
