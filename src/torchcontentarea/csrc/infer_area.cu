@@ -11,7 +11,7 @@
 #define INLIER_THRESHOLD 4.0f
 #define MAX_RANSAC_ITERATIONS 10
 #define VALID_POINT_THRESHOLD 0.005
-#define STRICT_VALID_POINT_THRESHOLD 0.05
+#define STRICT_VALID_POINT_THRESHOLD 0.03
 
 #define MAX_POINT_COUNT 32
 #define DEG2RAD 0.01745329251f
@@ -77,9 +77,11 @@ __global__ void border_guess(const uint8* g_image, const uint image_width, const
         }
         
         if (i == 4)
-        {
-            image_x = (image_width / 2 - 16) + threadIdx.x;
-            image_y = (image_height / 2 - 16) + threadIdx.y;
+        {   
+            float stride_x = 6;
+            float stride_y = 6;
+            image_x = (image_width / 2 - stride_x * 16) + stride_x * (threadIdx.x + 0.5);
+            image_y = (image_height / 2 - stride_y * 16) + stride_y * (threadIdx.y + 0.5);
         }
 
         float x = 0;
