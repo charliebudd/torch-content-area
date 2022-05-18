@@ -12,6 +12,8 @@
 #define MAX_RANSAC_ITERATIONS 10
 
 #define MAX_POINT_COUNT 32
+#define INVALID_POINT -1
+#define DISCARD_BORDER 4
 #define DEG2RAD 0.01745329251f
 
 #define WARP_COUNT(x) ((x - 1) >> 5) + 1
@@ -101,8 +103,6 @@ __global__ void border_guess(const uint8* g_image, const uint image_width, const
         x += value;
         xx += value * value;
     }
-
-    __syncthreads();
     
     // warp reduction....
     #pragma unroll
@@ -195,8 +195,8 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     // ============================================================
     // Reduction to find the first and last edge in strip...
 
-    int first_edge = is_edge ? image_x : image_width - 1;
-    int last_edge = is_edge ? image_x : 0;
+    int first_edge = is_edge ? image_x : INVALID_POINT;
+    int last_edge = is_edge ? image_x : INVALID_POINT;
     
     // warp reduction....
     #pragma unroll
@@ -205,12 +205,12 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
         int other_first_edge = __shfl_down_sync(0xffffffff, first_edge, offset);
         int other_last_edge = __shfl_down_sync(0xffffffff, last_edge, offset);
 
-        if (other_first_edge < first_edge)
+        if (first_edge == INVALID_POINT || (other_first_edge != INVALID_POINT && other_first_edge < first_edge))
         {
             first_edge = other_first_edge;
         }
         
-        if (other_last_edge > last_edge)
+        if (last_edge == INVALID_POINT || (other_last_edge != INVALID_POINT && other_last_edge > last_edge))
         {
             last_edge = other_last_edge;
         }
@@ -236,12 +236,12 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
             int other_first_edge = __shfl_down_sync(0xffffffff, first_edge, offset);
             int other_last_edge = __shfl_down_sync(0xffffffff, last_edge, offset);
 
-            if (other_first_edge < first_edge)
+            if (first_edge == INVALID_POINT || (other_first_edge != INVALID_POINT && other_first_edge < first_edge))
             {
                 first_edge = other_first_edge;
             }
             
-            if (other_last_edge > last_edge)
+            if (last_edge == INVALID_POINT || (other_last_edge != INVALID_POINT && other_last_edge > last_edge))
             {
                 last_edge = other_last_edge;
             }
@@ -272,8 +272,10 @@ __global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge
     uint point_x = g_edge_x[point_index];
     uint point_y = g_edge_y[point_index];
 
-    if (point_x < 1 || point_x > image_width - 2)
+    if (point_x == INVALID_POINT || point_x < DISCARD_BORDER || point_x > image_width - (DISCARD_BORDER+1))
         return;
+
+    point_x = max(warp_size / 2, min(point_x, image_width - 1 - warp_size / 2));
 
     // ============================================================
     // Load patch centered around point position into shared memory...
@@ -316,7 +318,7 @@ __global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge
     // Reduction to find the first and last edge in strip...
 
     bool flip = point_index >= strip_count;
-    int edge = is_edge ? image_x : (flip ? 0 : image_width);
+    int edge = is_edge ? image_x : INVALID_POINT;
     
     // warp reduction....
     #pragma unroll
@@ -326,7 +328,7 @@ __global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge
         float other_x_grad = __shfl_down_sync(0xffffffff, x_grad, offset);
         float other_y_grad = __shfl_down_sync(0xffffffff, y_grad, offset);
 
-        if ((flip && other_edge > edge) || (!flip && other_edge < edge))
+        if (edge == INVALID_POINT || (other_edge != INVALID_POINT && flip == other_edge > edge))
         {
             edge = other_edge;
             x_grad = other_x_grad;
@@ -515,21 +517,22 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, float* g
 
         for (int point_index = 0; point_index < point_count; point_index++)
         {
-            if (s_edge_x[point_index] < 1 || s_edge_x[point_index] > image_width - 2)
-            {
-                continue;
-            }
+            int edge_x = s_edge_x[point_index];
+            int edge_y = s_edge_y[point_index];
 
-            float delta_x = s_edge_x[point_index] - circle_x;
-            float delta_y = s_edge_y[point_index] - circle_y;
+            if (edge_x != INVALID_POINT && edge_x > DISCARD_BORDER && edge_x < image_width - (DISCARD_BORDER+1))
+            {  
+                float delta_x = edge_x - circle_x;
+                float delta_y = edge_y - circle_y;
 
-            float delta = sqrt(delta_x * delta_x + delta_y * delta_y);
-            float error = abs(circle_r - delta);
+                float delta = sqrt(delta_x * delta_x + delta_y * delta_y);
+                float error = abs(circle_r - delta);
 
-            if (error < INLIER_THRESHOLD)
-            {
-                inliers[inlier_count] = point_index;
-                inlier_count++;
+                if (error < INLIER_THRESHOLD)
+                {
+                    inliers[inlier_count] = point_index;
+                    inlier_count++;
+                }
             }
         }
     }
@@ -676,7 +679,7 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     // #########################################################
     // Returning...
 
-    if (confidence_score >= 0.17)
+    if (confidence_score >= 0.135)
     {
         return ContentArea(x, y, r);
     }
