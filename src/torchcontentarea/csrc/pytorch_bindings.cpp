@@ -92,14 +92,14 @@ torch::Tensor infer_mask_wrapper(ContentAreaInference &self, torch::Tensor image
     return mask;
 }
 
-std::vector<std::vector<int>> get_points_wrapper(ContentAreaInference &self, torch::Tensor image)
+std::vector<std::vector<float>> get_debug_wrapper(ContentAreaInference &self, torch::Tensor image)
 {
     image = image.contiguous();
 
     uint height = image.size(1);
     uint width = image.size(2);
 
-    return self.get_points(image.data_ptr<uint8>(), height, width);
+    return self.get_debug(image.data_ptr<uint8>(), height, width);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) 
@@ -110,7 +110,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("_ContentAreaInference__draw_mask", &draw_area_wrapper)
         .def("_ContentAreaInference__crop_area", &crop_area_wrapper)
         .def("_ContentAreaInference__infer_mask", &infer_mask_wrapper)
-        .def("_ContentAreaInference__get_points", &get_points_wrapper);
+        .def("_ContentAreaInference__get_debug", &get_debug_wrapper);
 
     #ifdef PROFILE
     m.def("get_times",
