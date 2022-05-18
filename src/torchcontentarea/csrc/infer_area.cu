@@ -10,12 +10,11 @@
 #define ANGLE_THRESHOLD 26
 #define INLIER_THRESHOLD 4.0f
 #define MAX_RANSAC_ITERATIONS 10
-#define VALID_POINT_THRESHOLD 0.005
-#define STRICT_VALID_POINT_THRESHOLD 0.03
-#define REQUIRED_VALID_POINT_COUNT 4
 
 #define MAX_POINT_COUNT 32
 #define DEG2RAD 0.01745329251f
+
+#define WARP_COUNT(x) ((x - 1) >> 5) + 1
 
 __device__ float load_grayscale(const uint8* data, const uint index, const uint x_stride, const uint y_stride)
 {
@@ -194,8 +193,8 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     // ============================================================
     // Reduction to find the first and last edge in strip...
 
-    int first_edge = is_edge ? image_x : image_width;
-    int last_edge = is_edge ? image_x : -1;
+    int first_edge = is_edge ? image_x : image_width - 1;
+    int last_edge = is_edge ? image_x : 0;
     
     // warp reduction....
     #pragma unroll
@@ -378,112 +377,7 @@ __host__ __device__ bool check_circle(float x, float y, float r, uint image_widt
     return valid;
 }
 
-__host__ __device__ uint triangle_size(const uint n)
-{
-    return n * (n - 1) / 2;
-}
-
-// Calculates the ij indices for element k of a n x n square 
-__device__ void square_indices(const int k, const int n, uint* i, uint* j)
-{
-    *i = n - 2 - int(sqrt(-8 * k + 4 * n * (n - 1) - 7) / 2.0 - 0.5);
-    *j = k + *i + 1 -  n * (n - 1) / 2 + (n - *i) * ((n - *i) - 1) / 2;
-}
-
-__global__ void check_triples(const uint* g_edge_x, const uint* g_edge_y, float* g_edge_scores, const uint point_count, const uint image_height, const uint image_width)
-{
-    __shared__ uint s_edge_x[MAX_POINT_COUNT];
-    __shared__ uint s_edge_y[MAX_POINT_COUNT];
-    __shared__ float s_score_reduction_buffer[MAX_POINT_COUNT];
-
-    if (threadIdx.x < point_count)
-    {
-        s_edge_x[threadIdx.x] = g_edge_x[threadIdx.x];
-        s_edge_y[threadIdx.x] = g_edge_y[threadIdx.x];
-    }
-    
-    __syncthreads();
-
-    const uint warp_count = ((blockDim.x - 1) >> 5) + 1;
-    const uint warp_index = threadIdx.x >> 5;
-    const uint lane_index = threadIdx.x & 31;
-
-    uint a_index, b_index, c_index;
-    a_index = blockIdx.x;
-    square_indices(threadIdx.x, point_count, &b_index, &c_index);
-
-    float ax = s_edge_x[a_index];
-    float ay = s_edge_y[a_index];
-    
-    float bx = s_edge_x[b_index];
-    float by = s_edge_y[b_index];
-    
-    float cx = s_edge_x[c_index];
-    float cy = s_edge_y[c_index];
-
-    bool valid = ax > 1 && ax < image_width - 2 && bx > 1 && bx < image_width - 2 && cx > 1 && cx < image_width - 2;
-
-    float x, y, r;
-    valid &= calculate_circle(ax, ay, bx, by, cx, cy, &x, &y, &r);
-    valid &= check_circle(x, y, r, image_width, image_height);
-
-    float score = 0.0f;
-
-    if (valid)
-    {
-        score = 0;
-
-        for (int i=0; i < point_count; i++)
-        {
-            float diff_x = (s_edge_x[i] - x);
-            float diff_y = (s_edge_y[i] - y);
-
-            float diff = sqrt(diff_x * diff_x + diff_y * diff_y);
-            diff = abs(diff - r);
-
-            if (diff < INLIER_THRESHOLD)
-            {
-                score += 1 - diff / INLIER_THRESHOLD;
-            }
-        }
-    }
-
-    //#################################
-    // Warp reduction
-    #pragma unroll
-    for (int offset = 16; offset > 0; offset /= 2)
-    {
-        score += __shfl_down_sync(0xffffffff, score, offset);
-    }
-
-    if (lane_index == 0)
-    { 
-        s_score_reduction_buffer[warp_index] = score;
-    }
-
-    // Syncing between warps
-    __syncthreads();
-
-    // Block reduction
-    if (warp_index == 0 && lane_index < warp_count)
-    {
-        score = s_score_reduction_buffer[lane_index];
-        
-        #pragma unroll
-        for (int offset = warp_count / 2; offset > 0; offset /= 2)
-        {
-            score += __shfl_down_sync(0xffffffff, score, offset);
-        }
-
-        // Outputting result
-        if (lane_index == 0)
-        {
-            g_edge_scores[a_index] = score / ((blockDim.x - (point_count - 1)) * point_count);
-        }
-    }
-}
-
-bool Cholesky3x3(float lhs[3][3], float rhs[3])
+__device__ bool Cholesky3x3(float lhs[3][3], float rhs[3])
 {
     float sum;
     float diagonal[3];
@@ -539,7 +433,7 @@ bool Cholesky3x3(float lhs[3][3], float rhs[3])
     return true;
 }
 
-void fit_circle(int point_count, int* indices, uint* points_x, uint* points_y, float* circle_x, float* circle_y, float* circle_r)
+__device__ void fit_circle(int point_count, int* indices, uint* points_x, uint* points_y, float* circle_x, float* circle_y, float* circle_r)
 {
     float lhs[3][3] {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
     float rhs[3] {0, 0, 0};
@@ -570,93 +464,153 @@ void fit_circle(int point_count, int* indices, uint* points_x, uint* points_y, f
     *circle_r = sqrt(4.0f * C + A * A + B * B) / 2.0f;
 }
 
-void random_triplet(int max, int& a, int& b, int& c)
-{
-    a = rand() % max;
-    do b = rand() % max; while (b == a);
-    do c = rand() % max; while (c == a || c == b);
+__device__ int fast_rand(int seed) 
+{ 
+    seed = 214013 * seed + 2531011; 
+    return (seed >> 16) & 0x7FFF; 
 }
 
-void circle_selection(const uint point_count, uint* points_x, uint* points_y, float* circle_x, float* circle_y, float* circle_r)
+__device__ void rand_triplet(int seed, int seed_stride, int max, int* triplet) 
+{ 
+    triplet[0] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;
+    do {triplet[1] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;} while (triplet[1] == triplet[0]);
+    do {triplet[2] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;} while (triplet[2] == triplet[0] || triplet[2] == triplet[1]);
+}
+
+template<int warp_count>
+__global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, float* g_circle, const uint point_count, const uint image_height, const uint image_width)
 {
-    int best_inlier_count = 0;
+    __shared__ uint s_edge_x[MAX_POINT_COUNT];
+    __shared__ uint s_edge_y[MAX_POINT_COUNT];
 
-    int* new_inliers = new int[point_count];
-    int* old_inliers = new int[point_count];
+    __shared__ float s_n_reduction_buffer[MAX_POINT_COUNT];
+    __shared__ float s_x_reduction_buffer[MAX_POINT_COUNT];
+    __shared__ float s_y_reduction_buffer[MAX_POINT_COUNT];
+    __shared__ float s_r_reduction_buffer[MAX_POINT_COUNT];
 
-    int new_inlier_count = 0;
-    int old_inlier_count = 0;
+    if (threadIdx.x < point_count)
+    {
+        s_edge_x[threadIdx.x] = g_edge_x[threadIdx.x];
+        s_edge_y[threadIdx.x] = g_edge_y[threadIdx.x];
+    }
+    
+    __syncthreads();
+
+    const uint warp_index = threadIdx.x >> 5;
+    const uint lane_index = threadIdx.x & 31;
+
+    int inlier_count = 3;
+    int inliers[MAX_POINT_COUNT];
+    rand_triplet(threadIdx.x, blockDim.x, point_count, inliers);
+
+    float circle_x, circle_y, circle_r;
 
     for (int i = 0; i < MAX_RANSAC_ITERATIONS; i++)
     {
-        new_inlier_count = 3;
-        random_triplet(point_count, new_inliers[0], new_inliers[1], new_inliers[2]);
+        fit_circle(inlier_count, inliers, s_edge_x, s_edge_y, &circle_x, &circle_y, &circle_r);
+        
+        inlier_count = 0;
 
-        float new_circle_x, new_circle_y, new_circle_r;
-
-        for (int j = 0; j < MAX_RANSAC_ITERATIONS; j++)
+        for (int point_index = 0; point_index < point_count; point_index++)
         {
-            fit_circle(new_inlier_count, new_inliers, points_x, points_y, &new_circle_x, &new_circle_y, &new_circle_r);
-            
-            if (new_inlier_count == point_count)
+            if (s_edge_x[point_index] < 1 || s_edge_x[point_index] > image_width - 2)
             {
-                break;
+                continue;
             }
 
-            std::swap(new_inliers, old_inliers);
+            float delta_x = s_edge_x[point_index] - circle_x;
+            float delta_y = s_edge_y[point_index] - circle_y;
 
-            old_inlier_count = new_inlier_count;
-            new_inlier_count = 0;
+            float delta = sqrt(delta_x * delta_x + delta_y * delta_y);
+            float error = abs(circle_r - delta);
 
-            bool no_change = true;
-
-            for (int point_index = 0; point_index < point_count; point_index++)
+            if (error < INLIER_THRESHOLD)
             {
-                float delta_x = points_x[point_index] - new_circle_x;
-                float delta_y = points_y[point_index] - new_circle_y;
-
-                float delta = sqrt(delta_x * delta_x + delta_y * delta_y);
-                float error = abs(new_circle_r - delta);
-
-                if (error < INLIER_THRESHOLD)
-                {
-                    no_change &= old_inliers[new_inlier_count] == point_index;
-                    new_inliers[new_inlier_count] = point_index;
-                    new_inlier_count++;
-                }
+                inliers[inlier_count] = point_index;
+                inlier_count++;
             }
-
-            no_change &= new_inlier_count == old_inlier_count;
-
-            if (new_inlier_count < 3 || no_change)
-            {
-                break;
-            }
-        }
-
-        if (new_inlier_count > best_inlier_count)
-        {
-            best_inlier_count = new_inlier_count;
-
-            *circle_x = new_circle_x;
-            *circle_y = new_circle_y;
-            *circle_r = new_circle_r;
-        }
-
-        if (new_inlier_count == point_count)
-        {
-            break;
         }
     }
 
-    delete new_inliers;
-    delete old_inliers;
+    bool circle_valid = check_circle(circle_x, circle_y, circle_r, image_width, image_height);
+
+    if (!circle_valid)
+    {
+        inlier_count = 0;
+    }
+
+    //#################################
+    // Reduction
+
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2)
+    {
+        int other_inlier_count = __shfl_down_sync(0xffffffff, inlier_count, offset);
+        float other_circle_x = __shfl_down_sync(0xffffffff, circle_x, offset);
+        float other_circle_y = __shfl_down_sync(0xffffffff, circle_y, offset);
+        float other_circle_r = __shfl_down_sync(0xffffffff, circle_r, offset);
+
+        if (other_inlier_count > inlier_count)
+        {
+            inlier_count = other_inlier_count;
+            circle_x = other_circle_x;
+            circle_y = other_circle_y;
+            circle_r = other_circle_r;
+        }
+    }
+
+    if (lane_index == 0)
+    {
+        s_n_reduction_buffer[warp_index] = inlier_count;
+        s_x_reduction_buffer[warp_index] = circle_x;
+        s_y_reduction_buffer[warp_index] = circle_y;
+        s_r_reduction_buffer[warp_index] = circle_r;
+    }
+
+    __syncthreads();
+
+    if (warp_index == 0 && lane_index < warp_count)
+    {
+        inlier_count = s_n_reduction_buffer[warp_index];
+        circle_x = s_x_reduction_buffer[warp_index];
+        circle_y = s_y_reduction_buffer[warp_index];
+        circle_r = s_r_reduction_buffer[warp_index];
+
+        #pragma unroll
+        for (int offset = warp_count / 2; offset > 0; offset /= 2)
+        {
+            int other_inlier_count = __shfl_down_sync(0xffffffff, inlier_count, offset);
+            float other_circle_x = __shfl_down_sync(0xffffffff, circle_x, offset);
+            float other_circle_y = __shfl_down_sync(0xffffffff, circle_y, offset);
+            float other_circle_r = __shfl_down_sync(0xffffffff, circle_r, offset);
+
+            if (other_inlier_count > inlier_count)
+            {
+                inlier_count = other_inlier_count;
+                circle_x = other_circle_x;
+                circle_y = other_circle_y;
+                circle_r = other_circle_r;
+            }
+        }
+
+        if (lane_index == 0)
+        {
+            g_circle[0] = circle_x;
+            g_circle[1] = circle_y;
+            g_circle[2] = circle_r;
+            g_circle[3] = inlier_count;
+        }
+    }
 }
 
 #define warp_size 32
 #define find_points_warp_count 16
+
 #define border_guess_sample_size 8
-#define border_guess_warp_count 2
+#define border_guess_warp_count WARP_COUNT(border_guess_sample_size * border_guess_sample_size)
+
+#define ransac_threads 128
+#define ransac_warps WARP_COUNT(ransac_threads)
 
 ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
 {
@@ -679,11 +633,11 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, image_width, image_height, m_height_samples);
 
     // #########################################################
-    // Evaluating candidate points...
+    // Fitting circle to candididate points...
 
-    dim3 check_triples_grid(m_point_count);
-    dim3 check_triples_block(triangle_size(m_point_count));
-    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
+    dim3 rand_ransac_grid(1);
+    dim3 rand_ransac_block(ransac_threads);
+    rand_ransac<ransac_warps><<<rand_ransac_grid, rand_ransac_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_circle, m_point_count, image_height, image_width);
 
     // #########################################################
     // Reading back results...
@@ -702,74 +656,86 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     float corner_std = sqrt(corner_xx_mean - corner_x_mean * corner_x_mean);
     float middle_std = sqrt(middle_xx_mean - middle_x_mean * middle_x_mean);
 
-    bool border = abs(corner_x_mean - middle_x_mean) > (corner_std + middle_std);
-
-    // #########################################################
-    // Removing invalid points...
-
-    int valid_point_count = 0;
-
-    float threshold = border ? VALID_POINT_THRESHOLD : STRICT_VALID_POINT_THRESHOLD;
-
-    for (int i = 0; i < m_point_count; i++)
-    {
-        if ((m_hst_edge_x[i] != -1 && m_hst_scores[i] > threshold))
-        {
-            m_hst_edge_x[valid_point_count] = m_hst_edge_x[i];
-            m_hst_edge_y[valid_point_count] = m_hst_edge_y[i];
-            m_hst_scores[valid_point_count] = m_hst_scores[i];
-            valid_point_count += 1;
-        }
-    }
+    bool border = abs(corner_x_mean - middle_x_mean) > (corner_std + middle_std) && corner_x_mean < middle_x_mean;
+    float border_score = tanh(abs(corner_x_mean - middle_x_mean) / (corner_std + middle_std));
     
     // #########################################################
-    // Fitting final circle...
+    // Checking border...
 
-    if (valid_point_count < REQUIRED_VALID_POINT_COUNT)
+    float x = m_hst_circle[0];
+    float y = m_hst_circle[1];
+    float r = m_hst_circle[2];
+    float n = m_hst_circle[3];
+
+    float point_score = n / m_point_count;
+
+    float confidence_score =  point_score * border_score;
+
+    // #########################################################
+    // Returning...
+
+    if (confidence_score >= 0.17)
     {
-        return ContentArea();
+        return ContentArea(x, y, r);
     }
     else
     {
-        float x, y, r;
-        circle_selection(valid_point_count, m_hst_edge_x, m_hst_edge_y, &x, &y, &r);
-        bool valid = check_circle(x, y, r, image_width, image_height);
-
-        return valid ? ContentArea(x, y, r) : ContentArea();
+        return ContentArea();
     }
 }
 
-std::vector<std::vector<int>> ContentAreaInference::get_points(uint8* image, const uint image_height, const uint image_width)
+std::vector<std::vector<float>> ContentAreaInference::get_debug(uint8* image, const uint image_height, const uint image_width)
 {
-    dim3 find_points_grid(m_height_samples);
-    dim3 find_points_block(warp_size * find_points_warp_count);
-    find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, m_height_samples);
+    infer_area(image, image_height, image_width);
 
-    dim3 refine_points_grid(m_point_count);
-    dim3 refine_points_block(warp_size);
-    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, image_width, image_height, m_height_samples);
-    
-    dim3 check_triples_grid(m_point_count);
-    dim3 check_triples_block(triangle_size(m_point_count));
-    check_triples<<<check_triples_grid, check_triples_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_scores, m_point_count, image_height, image_width);
+    float corner_x_mean = (m_hst_x_sums[0] + m_hst_x_sums[1] + m_hst_x_sums[2] + m_hst_x_sums[3]) / 4;
+    float corner_xx_mean = (m_hst_xx_sums[0] + m_hst_xx_sums[1] + m_hst_xx_sums[2] + m_hst_xx_sums[3]) / 4;
 
-    cudaMemcpy(m_hst_buffer, m_dev_buffer, m_buffer_size, cudaMemcpyDeviceToHost);
+    float middle_x_mean = m_hst_x_sums[4];
+    float middle_xx_mean = m_hst_xx_sums[4];
 
-    std::vector<int> points_x, points_y, norm_x, norm_y, scores;
+    float corner_std = sqrt(corner_xx_mean - corner_x_mean * corner_x_mean);
+    float middle_std = sqrt(middle_xx_mean - middle_x_mean * middle_x_mean);
+
+    bool border = abs(corner_x_mean - middle_x_mean) > (corner_std + middle_std) && corner_x_mean < middle_x_mean;
+    float border_score = tanh(abs(corner_x_mean - middle_x_mean) / (corner_std + middle_std));
+
+    float x = m_hst_circle[0];
+    float y = m_hst_circle[1];
+    float r = m_hst_circle[2];
+    float n = m_hst_circle[3];
+
+    float point_score = n / m_point_count;
+
+    float confidence_score =  point_score * border_score;
+
+    // #########################################################
+    // Checking border...
+
+    std::vector<float> points_x, points_y, norm_x, norm_y, circle, scores;
+
     for (int i = 0; i < m_point_count; i++)
     {
         points_x.push_back(m_hst_edge_x[i]);
         points_y.push_back(m_hst_edge_y[i]);
         norm_x.push_back(m_hst_norm_x[i]);
         norm_y.push_back(m_hst_norm_y[i]);
-        scores.push_back(((int*)m_hst_scores)[i]);
     }
 
-    std::vector<std::vector<int>> result = std::vector<std::vector<int>>();
+    circle.push_back(x);
+    circle.push_back(y);
+    circle.push_back(r);
+
+    scores.push_back(border_score);
+    scores.push_back(point_score);
+    scores.push_back(confidence_score);
+
+    std::vector<std::vector<float>> result = std::vector<std::vector<float>>();
     result.push_back(points_x);
     result.push_back(points_y);
     result.push_back(norm_x);
     result.push_back(norm_y);
+    result.push_back(circle);
     result.push_back(scores);
 
     return result;
