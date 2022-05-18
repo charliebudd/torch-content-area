@@ -102,6 +102,8 @@ __global__ void border_guess(const uint8* g_image, const uint image_width, const
         xx += value * value;
     }
 
+    __syncthreads();
+    
     // warp reduction....
     #pragma unroll
     for (int offset = warp_size >> 1; offset > 0; offset >>= 1)
