@@ -8,12 +8,12 @@
 #define EDGE_THRESHOLD 4
 #define STRICT_EDGE_THRESHOLD 10.5
 #define ANGLE_THRESHOLD 26
-#define INLIER_THRESHOLD 4.0f
+#define INLIER_THRESHOLD 3.0f
 #define MAX_RANSAC_ITERATIONS 10
+#define DISCARD_BORDER 4
 
 #define MAX_POINT_COUNT 32
 #define INVALID_POINT -1
-#define DISCARD_BORDER 4
 #define DEG2RAD 0.01745329251f
 
 #define WARP_COUNT(x) ((x - 1) >> 5) + 1
@@ -482,20 +482,24 @@ __device__ void rand_triplet(int seed, int seed_stride, int max, int* triplet)
 }
 
 template<int warp_count>
-__global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, float* g_circle, const uint point_count, const uint image_height, const uint image_width)
+__global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const float* g_norm_x, const float* g_norm_y, float* g_circle, const uint point_count, const uint image_height, const uint image_width)
 {
     __shared__ uint s_edge_x[MAX_POINT_COUNT];
     __shared__ uint s_edge_y[MAX_POINT_COUNT];
+    __shared__ float s_norm_x[MAX_POINT_COUNT];
+    __shared__ float s_norm_y[MAX_POINT_COUNT];
 
-    __shared__ float s_n_reduction_buffer[MAX_POINT_COUNT];
-    __shared__ float s_x_reduction_buffer[MAX_POINT_COUNT];
-    __shared__ float s_y_reduction_buffer[MAX_POINT_COUNT];
-    __shared__ float s_r_reduction_buffer[MAX_POINT_COUNT];
+    __shared__ float s_score_reduction_buffer[warp_count];
+    __shared__ float s_x_reduction_buffer[warp_count];
+    __shared__ float s_y_reduction_buffer[warp_count];
+    __shared__ float s_r_reduction_buffer[warp_count];
 
     if (threadIdx.x < point_count)
     {
         s_edge_x[threadIdx.x] = g_edge_x[threadIdx.x];
         s_edge_y[threadIdx.x] = g_edge_y[threadIdx.x];
+        s_norm_x[threadIdx.x] = g_norm_x[threadIdx.x];
+        s_norm_y[threadIdx.x] = g_norm_y[threadIdx.x];
     }
     
     __syncthreads();
@@ -508,12 +512,14 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, float* g
     rand_triplet(threadIdx.x, blockDim.x, point_count, inliers);
 
     float circle_x, circle_y, circle_r;
+    float circle_score = 0.0f;
 
     for (int i = 0; i < MAX_RANSAC_ITERATIONS; i++)
     {
         fit_circle(inlier_count, inliers, s_edge_x, s_edge_y, &circle_x, &circle_y, &circle_r);
         
         inlier_count = 0;
+        circle_score = 0.0f;
 
         for (int point_index = 0; point_index < point_count; point_index++)
         {
@@ -522,26 +528,35 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, float* g
 
             if (edge_x != INVALID_POINT && edge_x > DISCARD_BORDER && edge_x < image_width - (DISCARD_BORDER+1))
             {  
-                float delta_x = edge_x - circle_x;
-                float delta_y = edge_y - circle_y;
+                float delta_x = circle_x - edge_x;
+                float delta_y = circle_y - edge_y;
 
                 float delta = sqrt(delta_x * delta_x + delta_y * delta_y);
                 float error = abs(circle_r - delta);
 
                 if (error < INLIER_THRESHOLD)
                 {
+                    float norm_x = s_norm_x[point_index];
+                    float norm_y = s_norm_y[point_index];
+
+                    float dot = (delta_x * norm_x + delta_y * norm_y) / delta;
+
+                    circle_score += dot;
+
                     inliers[inlier_count] = point_index;
                     inlier_count++;
                 }
             }
         }
+
+        circle_score /= point_count;
     }
 
     bool circle_valid = check_circle(circle_x, circle_y, circle_r, image_width, image_height);
 
     if (!circle_valid)
     {
-        inlier_count = 0;
+        circle_score = 0;
     }
 
     //#################################
@@ -550,14 +565,14 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, float* g
     #pragma unroll
     for (int offset = 16; offset > 0; offset /= 2)
     {
-        int other_inlier_count = __shfl_down_sync(0xffffffff, inlier_count, offset);
+        float other_circle_score = __shfl_down_sync(0xffffffff, circle_score, offset);
         float other_circle_x = __shfl_down_sync(0xffffffff, circle_x, offset);
         float other_circle_y = __shfl_down_sync(0xffffffff, circle_y, offset);
         float other_circle_r = __shfl_down_sync(0xffffffff, circle_r, offset);
 
-        if (other_inlier_count > inlier_count)
+        if (other_circle_score > circle_score)
         {
-            inlier_count = other_inlier_count;
+            circle_score = other_circle_score;
             circle_x = other_circle_x;
             circle_y = other_circle_y;
             circle_r = other_circle_r;
@@ -566,7 +581,7 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, float* g
 
     if (lane_index == 0)
     {
-        s_n_reduction_buffer[warp_index] = inlier_count;
+        s_score_reduction_buffer[warp_index] = circle_score;
         s_x_reduction_buffer[warp_index] = circle_x;
         s_y_reduction_buffer[warp_index] = circle_y;
         s_r_reduction_buffer[warp_index] = circle_r;
@@ -576,7 +591,7 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, float* g
 
     if (warp_index == 0 && lane_index < warp_count)
     {
-        inlier_count = s_n_reduction_buffer[warp_index];
+        circle_score = s_score_reduction_buffer[warp_index];
         circle_x = s_x_reduction_buffer[warp_index];
         circle_y = s_y_reduction_buffer[warp_index];
         circle_r = s_r_reduction_buffer[warp_index];
@@ -584,14 +599,14 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, float* g
         #pragma unroll
         for (int offset = warp_count / 2; offset > 0; offset /= 2)
         {
-            int other_inlier_count = __shfl_down_sync(0xffffffff, inlier_count, offset);
+            float other_circle_score = __shfl_down_sync(0xffffffff, circle_score, offset);
             float other_circle_x = __shfl_down_sync(0xffffffff, circle_x, offset);
             float other_circle_y = __shfl_down_sync(0xffffffff, circle_y, offset);
             float other_circle_r = __shfl_down_sync(0xffffffff, circle_r, offset);
 
-            if (other_inlier_count > inlier_count)
+            if (other_circle_score > circle_score)
             {
-                inlier_count = other_inlier_count;
+                circle_score = other_circle_score;
                 circle_x = other_circle_x;
                 circle_y = other_circle_y;
                 circle_r = other_circle_r;
@@ -603,7 +618,7 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, float* g
             g_circle[0] = circle_x;
             g_circle[1] = circle_y;
             g_circle[2] = circle_r;
-            g_circle[3] = inlier_count;
+            g_circle[3] = circle_score;
         }
     }
 }
@@ -642,7 +657,7 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 
     dim3 rand_ransac_grid(1);
     dim3 rand_ransac_block(ransac_threads);
-    rand_ransac<ransac_warps><<<rand_ransac_grid, rand_ransac_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_circle, m_point_count, image_height, image_width);
+    rand_ransac<ransac_warps><<<rand_ransac_grid, rand_ransac_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, m_dev_circle, m_point_count, image_height, image_width);
 
     // #########################################################
     // Reading back results...
@@ -665,23 +680,21 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     float border_score = tanh(abs(corner_x_mean - middle_x_mean) / (corner_std + middle_std));
     
     // #########################################################
-    // Checking border...
+    // Checking circle...
 
-    float x = m_hst_circle[0];
-    float y = m_hst_circle[1];
-    float r = m_hst_circle[2];
-    float n = m_hst_circle[3];
-
-    float point_score = n / m_point_count;
-
-    float confidence_score =  point_score * border_score;
+    float circle_x = m_hst_circle[0];
+    float circle_y = m_hst_circle[1];
+    float circle_r = m_hst_circle[2];
+    float circle_score = m_hst_circle[3];
 
     // #########################################################
     // Returning...
 
-    if (confidence_score >= 0.135)
+    float confidence_score = circle_score * border_score;
+
+    if (confidence_score >= 0.15)
     {
-        return ContentArea(x, y, r);
+        return ContentArea(circle_x, circle_y, circle_r);
     }
     else
     {
@@ -692,6 +705,9 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 std::vector<std::vector<float>> ContentAreaInference::get_debug(uint8* image, const uint image_height, const uint image_width)
 {
     infer_area(image, image_height, image_width);
+   
+    // #########################################################
+    // Checking border...
 
     float corner_x_mean = (m_hst_x_sums[0] + m_hst_x_sums[1] + m_hst_x_sums[2] + m_hst_x_sums[3]) / 4;
     float corner_xx_mean = (m_hst_xx_sums[0] + m_hst_xx_sums[1] + m_hst_xx_sums[2] + m_hst_xx_sums[3]) / 4;
@@ -704,15 +720,19 @@ std::vector<std::vector<float>> ContentAreaInference::get_debug(uint8* image, co
 
     bool border = abs(corner_x_mean - middle_x_mean) > (corner_std + middle_std) && corner_x_mean < middle_x_mean;
     float border_score = tanh(abs(corner_x_mean - middle_x_mean) / (corner_std + middle_std));
+    
+    // #########################################################
+    // Checking circle...
 
-    float x = m_hst_circle[0];
-    float y = m_hst_circle[1];
-    float r = m_hst_circle[2];
-    float n = m_hst_circle[3];
+    float circle_x = m_hst_circle[0];
+    float circle_y = m_hst_circle[1];
+    float circle_r = m_hst_circle[2];
+    float circle_score = m_hst_circle[3];
 
-    float point_score = n / m_point_count;
+    // #########################################################
+    // Returning...
 
-    float confidence_score =  point_score * border_score;
+    float confidence_score = circle_score * border_score;
 
     // #########################################################
     // Checking border...
@@ -727,12 +747,12 @@ std::vector<std::vector<float>> ContentAreaInference::get_debug(uint8* image, co
         norm_y.push_back(m_hst_norm_y[i]);
     }
 
-    circle.push_back(x);
-    circle.push_back(y);
-    circle.push_back(r);
+    circle.push_back(circle_x);
+    circle.push_back(circle_y);
+    circle.push_back(circle_r);
 
     scores.push_back(border_score);
-    scores.push_back(point_score);
+    scores.push_back(circle_score);
     scores.push_back(confidence_score);
 
     std::vector<std::vector<float>> result = std::vector<std::vector<float>>();
