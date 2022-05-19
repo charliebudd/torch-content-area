@@ -1,8 +1,8 @@
-import unittest
 import torch
+import unittest
 
-from utils import TestDataset, TestDataLoader, timed, iou_score, perimeter_distance_score
 from torchcontentarea import ContentAreaInference
+from utils import TestDataset, TestDataLoader, timed, perimeter_distance_score
 
 MISS_THRESHOLD=5
 BAD_MISS_THRESHOLD=10
@@ -11,7 +11,8 @@ class TestPerformance(unittest.TestCase):
                             
     def __init__(self, methodName: str = ...) -> None:
         super().__init__(methodName)
-        self.dataloader = TestDataLoader(TestDataset())
+        self.dataset = TestDataset()
+        self.dataloader = TestDataLoader(self.dataset)
         self.content_area_inference = ContentAreaInference()
 
     def test_circle_accuracy(self):
@@ -24,28 +25,24 @@ class TestPerformance(unittest.TestCase):
         false_positives = 0
         false_negatives = 0
 
-        for img, mask, area in self.dataloader:
+        for img, area in self.dataloader:
             
-            img, mask = img.cuda(), mask.cuda()
-            
-            x_low, x_high = int(img.shape[1] * 0.3), int(img.shape[1] * 0.7)
-            y_low, y_high = int(img.shape[2] * 0.3), int(img.shape[2] * 0.7)
-            img_cropped = img[:, x_low:x_high, y_low:y_high]
+            img = img.cuda()
             
             time, infered_area = timed(lambda x: self.content_area_inference.infer_area(x), img)
-            infered_area_cropped = self.content_area_inference.infer_area(img_cropped)
 
-            if infered_area == None:
-                false_negatives += 1
+            if area == None:
+                if infered_area == None:
+                    true_negatives += 1
+                else:
+                    false_positives += 1
             else:
-                true_positives += 1
-                
-            if infered_area_cropped == None:
-                true_negatives += 1
-            else:
-                false_positives += 1
+                if infered_area == None:
+                    false_negatives += 1
+                else:
+                    true_positives += 1
 
-            if infered_area != None:
+            if area != None and infered_area != None:
                 error = perimeter_distance_score(area, infered_area)
                 errors.append(error)
 
@@ -62,6 +59,8 @@ class TestPerformance(unittest.TestCase):
         miss_percentage = 100 * sum(map(lambda x: x > MISS_THRESHOLD, errors)) / len(errors) if len(errors) > 0 else 0.0
         bad_miss_percentage = 100 * sum(map(lambda x: x > BAD_MISS_THRESHOLD, errors)) / len(errors) if len(errors) > 0 else 0.0
 
+        total_errors = 100 * (false_negatives + false_positives + sum(map(lambda x: x > BAD_MISS_THRESHOLD, errors))) / len(errors)
+
         print("\n")
         print(f'Performance Results...')
         print(f'- Avg Time ({gpu_name}): {avg_time:.3f}ms')
@@ -71,6 +70,7 @@ class TestPerformance(unittest.TestCase):
         print(f'- Classification Accuracy: {100 * classification_accuracy:.1f}%')
         print(f'- False Negative Rate: {100 * fn_rate:.1f}%')
         print(f'- False Positive Rate: {100 * fp_rate:.1f}%')
+        print(f'- Total Error Rate (Bad Misses + Miss-classified): {total_errors:.1f}%')
         print("\n")
 
         try:
