@@ -18,6 +18,9 @@
 
 #define WARP_COUNT(x) ((x - 1) >> 5) + 1
 
+// =========================================================================
+// General functionality...
+
 __device__ float load_grayscale(const uint8* data, const uint index, const uint x_stride, const uint y_stride)
 {
     return 0.2126f * data[index + 0 * x_stride * y_stride] + 0.7152f * data[index + 1 * x_stride * y_stride] + 0.0722f * data[index + 2 * x_stride * y_stride];
@@ -35,6 +38,147 @@ __device__ float sobel_filter(const float* data, const uint index, const uint x_
 
     return sqrt(*x_grad * *x_grad + *y_grad * *y_grad);
 }
+
+__device__ int fast_rand(int seed) 
+{ 
+    seed = 214013 * seed + 2531011; 
+    return (seed >> 16) & 0x7FFF; 
+}
+
+__device__ void rand_triplet(int seed, int seed_stride, int max, int* triplet) 
+{ 
+    triplet[0] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;
+    do {triplet[1] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;} while (triplet[1] == triplet[0]);
+    do {triplet[2] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;} while (triplet[2] == triplet[0] || triplet[2] == triplet[1]);
+}
+
+__device__ bool check_circle(float x, float y, float r, uint image_width, uint image_height)
+{
+    float x_diff = x - 0.5 * image_width;
+    float y_diff = y - 0.5 * image_height;
+    float diff = sqrt(x_diff * x_diff + y_diff * y_diff);
+
+    bool valid = true;
+    valid &= diff < MAX_CENTER_DIST * image_width;
+    valid &= r > MIN_RADIUS * image_width;
+    valid &= r < MAX_RADIUS * image_width;
+    
+    return valid;
+}
+
+__device__ bool calculate_circle(float ax, float ay, float bx, float by, float cx, float cy, float* x, float* y, float* r)
+{
+    float offset = bx * bx + by * by;
+
+    float bc = 0.5f * (ax * ax + ay * ay - offset);
+    float cd = 0.5f * (offset - cx * cx - cy * cy);
+
+    float det = (ax - bx) * (by - cy) - (bx - cx) * (ay - by);
+
+    bool valid = abs(det) > 1e-8; 
+
+    if (valid)
+    {
+        float idet = 1.0f / det;
+
+        *x = (bc * (by - cy) - cd * (ay - by)) * idet;
+        *y = (cd * (ax - bx) - bc * (bx - cx)) * idet;
+        *r = sqrt((bx - *x) * (bx - *x) + (by - *y) * (by - *y));
+    }
+
+    return valid;
+}
+
+__device__ bool Cholesky3x3(float lhs[3][3], float rhs[3])
+{
+    float sum;
+    float diagonal[3];
+
+    sum = lhs[0][0];
+
+    if (sum <= 0.f) 
+        return false;
+
+    diagonal[0] = sqrt(sum);
+
+    sum = lhs[0][1];
+    lhs[1][0] = sum / diagonal[0];
+
+    sum = lhs[0][2];
+    lhs[2][0] = sum / diagonal[0];
+
+    sum = lhs[1][1] - lhs[1][0] * lhs[1][0];
+
+    if (sum <= 0.f) 
+        return false;
+
+    diagonal[1] = sqrt(sum);
+
+    sum = lhs[1][2] - lhs[1][0] * lhs[2][0];
+    lhs[2][1] = sum / diagonal[1];
+
+    sum = lhs[2][2] - lhs[2][1] * lhs[2][1] - lhs[2][0] * lhs[2][0];
+
+    if (sum <= 0.f)
+        return false;
+
+    diagonal[2] = sqrt(sum);
+
+    sum = rhs[0];
+    rhs[0] = sum / diagonal[0];
+
+    sum = rhs[1] - lhs[1][0] * rhs[0];
+    rhs[1] = sum / diagonal[1];
+
+    sum = rhs[2] - lhs[2][1] * rhs[1] - lhs[2][0] * rhs[0];
+    rhs[2] = sum / diagonal[2];
+
+    sum = rhs[2];
+    rhs[2] = sum / diagonal[2];
+
+    sum = rhs[1] - lhs[2][1] * rhs[2];
+    rhs[1] = sum / diagonal[1];
+
+    sum = rhs[0] - lhs[1][0] * rhs[1] - lhs[2][0] * rhs[2];
+    rhs[0] = sum / diagonal[0];
+
+    return true;
+}
+
+__device__ void fit_circle(int point_count, int* indices, uint* points_x, uint* points_y, float* circle_x, float* circle_y, float* circle_r)
+{
+    float lhs[3][3] {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
+    float rhs[3] {0, 0, 0};
+
+    for (int i = 0; i < point_count; i++)
+    {
+        float p_x = points_x[indices[i]];
+        float p_y = points_y[indices[i]];
+
+        lhs[0][0] += p_x * p_x;
+        lhs[0][1] += p_x * p_y;
+        lhs[1][1] += p_y * p_y;
+        lhs[0][2] += p_x;
+        lhs[1][2] += p_y;
+        lhs[2][2] += 1;
+
+        rhs[0] += p_x * p_x * p_x + p_x * p_y * p_y;
+        rhs[1] += p_x * p_x * p_y + p_y * p_y * p_y;
+        rhs[2] += p_x * p_x + p_y * p_y;
+    }
+
+    Cholesky3x3(lhs, rhs);
+
+    float A=rhs[0], B=rhs[1], C=rhs[2];
+
+    *circle_x = A / 2.0f;
+    *circle_y = B / 2.0f;
+    *circle_r = sqrt(4.0f * C + A * A + B * B) / 2.0f;
+}
+
+
+// =========================================================================
+// Kernels...
 
 template<int warp_count>
 __global__ void border_guess(const uint8* g_image, const uint image_width, const uint image_height, float* g_x, float* g_xx)
@@ -344,143 +488,6 @@ __global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge
     }
 }
 
-__host__ __device__ bool calculate_circle(float ax, float ay, float bx, float by, float cx, float cy, float* x, float* y, float* r)
-{
-    float offset = bx * bx + by * by;
-
-    float bc = 0.5f * (ax * ax + ay * ay - offset);
-    float cd = 0.5f * (offset - cx * cx - cy * cy);
-
-    float det = (ax - bx) * (by - cy) - (bx - cx) * (ay - by);
-
-    bool valid = abs(det) > 1e-8; 
-
-    if (valid)
-    {
-        float idet = 1.0f / det;
-
-        *x = (bc * (by - cy) - cd * (ay - by)) * idet;
-        *y = (cd * (ax - bx) - bc * (bx - cx)) * idet;
-        *r = sqrt((bx - *x) * (bx - *x) + (by - *y) * (by - *y));
-    }
-
-    return valid;
-}
-
-__host__ __device__ bool check_circle(float x, float y, float r, uint image_width, uint image_height)
-{
-    float x_diff = x - 0.5 * image_width;
-    float y_diff = y - 0.5 * image_height;
-    float diff = sqrt(x_diff * x_diff + y_diff * y_diff);
-
-    bool valid = true;
-    valid &= diff < MAX_CENTER_DIST * image_width;
-    valid &= r > MIN_RADIUS * image_width;
-    valid &= r < MAX_RADIUS * image_width;
-    
-    return valid;
-}
-
-__device__ bool Cholesky3x3(float lhs[3][3], float rhs[3])
-{
-    float sum;
-    float diagonal[3];
-
-    sum = lhs[0][0];
-
-    if (sum <= 0.f) 
-        return false;
-
-    diagonal[0] = sqrt(sum);
-
-    sum = lhs[0][1];
-    lhs[1][0] = sum / diagonal[0];
-
-    sum = lhs[0][2];
-    lhs[2][0] = sum / diagonal[0];
-
-    sum = lhs[1][1] - lhs[1][0] * lhs[1][0];
-
-    if (sum <= 0.f) 
-        return false;
-
-    diagonal[1] = sqrt(sum);
-
-    sum = lhs[1][2] - lhs[1][0] * lhs[2][0];
-    lhs[2][1] = sum / diagonal[1];
-
-    sum = lhs[2][2] - lhs[2][1] * lhs[2][1] - lhs[2][0] * lhs[2][0];
-
-    if (sum <= 0.f)
-        return false;
-
-    diagonal[2] = sqrt(sum);
-
-    sum = rhs[0];
-    rhs[0] = sum / diagonal[0];
-
-    sum = rhs[1] - lhs[1][0] * rhs[0];
-    rhs[1] = sum / diagonal[1];
-
-    sum = rhs[2] - lhs[2][1] * rhs[1] - lhs[2][0] * rhs[0];
-    rhs[2] = sum / diagonal[2];
-
-    sum = rhs[2];
-    rhs[2] = sum / diagonal[2];
-
-    sum = rhs[1] - lhs[2][1] * rhs[2];
-    rhs[1] = sum / diagonal[1];
-
-    sum = rhs[0] - lhs[1][0] * rhs[1] - lhs[2][0] * rhs[2];
-    rhs[0] = sum / diagonal[0];
-
-    return true;
-}
-
-__device__ void fit_circle(int point_count, int* indices, uint* points_x, uint* points_y, float* circle_x, float* circle_y, float* circle_r)
-{
-    float lhs[3][3] {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
-    float rhs[3] {0, 0, 0};
-
-    for (int i = 0; i < point_count; i++)
-    {
-        float p_x = points_x[indices[i]];
-        float p_y = points_y[indices[i]];
-
-        lhs[0][0] += p_x * p_x;
-        lhs[0][1] += p_x * p_y;
-        lhs[1][1] += p_y * p_y;
-        lhs[0][2] += p_x;
-        lhs[1][2] += p_y;
-        lhs[2][2] += 1;
-
-        rhs[0] += p_x * p_x * p_x + p_x * p_y * p_y;
-        rhs[1] += p_x * p_x * p_y + p_y * p_y * p_y;
-        rhs[2] += p_x * p_x + p_y * p_y;
-    }
-
-    Cholesky3x3(lhs, rhs);
-
-    float A=rhs[0], B=rhs[1], C=rhs[2];
-
-    *circle_x = A / 2.0f;
-    *circle_y = B / 2.0f;
-    *circle_r = sqrt(4.0f * C + A * A + B * B) / 2.0f;
-}
-
-__device__ int fast_rand(int seed) 
-{ 
-    seed = 214013 * seed + 2531011; 
-    return (seed >> 16) & 0x7FFF; 
-}
-
-__device__ void rand_triplet(int seed, int seed_stride, int max, int* triplet) 
-{ 
-    triplet[0] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;
-    do {triplet[1] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;} while (triplet[1] == triplet[0]);
-    do {triplet[2] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;} while (triplet[2] == triplet[0] || triplet[2] == triplet[1]);
-}
-
 template<int warp_count>
 __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const float* g_norm_x, const float* g_norm_y, float* g_circle, const uint point_count, const uint image_height, const uint image_width)
 {
@@ -622,6 +629,9 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
         }
     }
 }
+
+// =========================================================================
+// Main function...
 
 #define warp_size 32
 #define find_points_warp_count 16
