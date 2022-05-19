@@ -109,7 +109,7 @@ class DummyDataset(Dataset):
     def __getitem__(self, index):
         area_x, area_y, area_r = self.areas[index]
 
-        coords = torch.stack(torch.meshgrid(torch.arange(0, self.height), torch.arange(0, self.width)))
+        coords = torch.stack(torch.meshgrid(torch.arange(0, self.height), torch.arange(0, self.width), indexing='ij'))
         center = torch.Tensor([area_y, area_x]).reshape((2, 1, 1))
 
         mask = torch.where(torch.linalg.norm(abs(coords - center), dim=0) > area_r, 0, 1).unsqueeze(0)
@@ -131,12 +131,22 @@ class TestDataset(Dataset):
         self.length = len(samples)
 
     def __len__(self):
-        return self.length
+        return 2 * self.length
 
     def __getitem__(self, index):
-        img, seg, area = self.img_paths[index], self.seg_paths[index], self.content_areas[index]
-        img, seg = tuple(map(lambda x: torch.from_numpy(np.array(Image.open(x))), (img, seg)))
-        return img.permute(2, 0, 1), seg.unsqueeze(0), area
+
+        crop = bool(index % 2)
+        index //= 2
+
+        img = torch.from_numpy(np.array(Image.open(self.img_paths[index]))).permute(2, 0, 1)
+
+        if crop:
+            x_low, x_high = int(img.shape[1] * 0.3), int(img.shape[1] * 0.7)
+            y_low, y_high = int(img.shape[2] * 0.3), int(img.shape[2] * 0.7)
+            img = img[:, x_low:x_high, y_low:y_high]
+            return img, None
+        else:
+            return img, self.content_areas[index]
 
 class TestDataLoader(DataLoader):
     def __init__(self, dataset, shuffle=False) -> None:
