@@ -11,6 +11,7 @@
 #define INLIER_THRESHOLD 3.0f
 #define MAX_RANSAC_ITERATIONS 10
 #define DISCARD_BORDER 4
+#define CONFIDENCE_THRESHOLD 0.15
 
 #define MAX_POINT_COUNT 32
 #define INVALID_POINT -1
@@ -686,7 +687,6 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     float corner_std = sqrt(corner_xx_mean - corner_x_mean * corner_x_mean);
     float middle_std = sqrt(middle_xx_mean - middle_x_mean * middle_x_mean);
 
-    bool border = abs(corner_x_mean - middle_x_mean) > (corner_std + middle_std) && corner_x_mean < middle_x_mean;
     float border_score = tanh(abs(corner_x_mean - middle_x_mean) / (corner_std + middle_std));
     
     // #########################################################
@@ -702,7 +702,7 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 
     float confidence_score = circle_score * border_score;
 
-    if (confidence_score >= 0.15)
+    if (confidence_score >= CONFIDENCE_THRESHOLD)
     {
         return ContentArea(circle_x, circle_y, circle_r);
     }
@@ -728,7 +728,6 @@ std::vector<std::vector<float>> ContentAreaInference::get_debug(uint8* image, co
     float corner_std = sqrt(corner_xx_mean - corner_x_mean * corner_x_mean);
     float middle_std = sqrt(middle_xx_mean - middle_x_mean * middle_x_mean);
 
-    bool border = abs(corner_x_mean - middle_x_mean) > (corner_std + middle_std) && corner_x_mean < middle_x_mean;
     float border_score = tanh(abs(corner_x_mean - middle_x_mean) / (corner_std + middle_std));
     
     // #########################################################
