@@ -1,3 +1,4 @@
+import numpy as np
 from torchcontentarea import ContentAreaInference
 from utils import TestDataset, perimeter_distance_score
 import matplotlib.pyplot as plt
@@ -22,24 +23,35 @@ def show_image(img, gt_area, area, points_x, points_y, norm_x, norm_y):
 
 
 def show_score_histograms(area_scores, no_area_scores, threshold_value):
-    area_border_scores, area_circle_scores, area_final_scores = zip(*area_scores)
-    no_area_border_scores, no_area_circle_scores, no_area_final_scores = zip(*no_area_scores)
+
+    try:
+        area_border_scores, area_circle_scores, area_final_scores = zip(*area_scores)
+    except:
+        area_border_scores, area_circle_scores, area_final_scores = [], [], []
+
+    try:
+        no_area_border_scores, no_area_circle_scores, no_area_final_scores = zip(*no_area_scores)
+    except:
+        no_area_border_scores, no_area_circle_scores, no_area_final_scores = [], [], []
+
+    bins = np.arange(0, 1.05, 0.05)
+
     plt.rcParams["figure.figsize"] = (15, 5)
     plt.subplot(131)
     plt.title("Border Score")
     plt.ylabel("Sample Count")
     plt.xlabel("Score")
-    plt.hist([area_border_scores, no_area_border_scores], bins=20)
+    plt.hist([area_border_scores, no_area_border_scores], bins=bins)
     plt.xlim(0, 1)
     plt.subplot(132)
     plt.title("Circle Score")
     plt.xlabel("Score")
-    plt.hist([area_circle_scores, no_area_circle_scores], bins=20)
+    plt.hist([area_circle_scores, no_area_circle_scores], bins=bins)
     plt.xlim(0, 1)
     plt.subplot(133)
     plt.title("Final Score")
     plt.xlabel("Score")
-    plt.hist([area_final_scores, no_area_final_scores], bins=20)
+    plt.hist([area_final_scores, no_area_final_scores], bins=bins)
     plt.axvline(threshold_value, color="red")
     plt.xlim(0, 1)
     plt.show()
@@ -48,6 +60,9 @@ def show_score_histograms(area_scores, no_area_scores, threshold_value):
 content_area = ContentAreaInference()
 dataset = TestDataset()
 
+
+show_bad_circles = False
+show_bad_classification = False
 show_bad_circles = True
 show_bad_classification = True
 
