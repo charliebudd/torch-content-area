@@ -39,6 +39,6 @@ Performance is tested against the [dataset](testing/data) included in this repo.
 - Classification Accuracy: 97.0%
 - False Negative Rate: 4.8%
 - False Positive Rate: 1.0%
-- Total Error Rate (Bad Misses + Miss-classified): 7.3% 
+- Total Error Rate (Bad Misses + Miss-classified): 3.5% 
 <!-- performance stats end -->
 
