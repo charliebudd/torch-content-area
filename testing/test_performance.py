@@ -48,8 +48,10 @@ class TestPerformance(unittest.TestCase):
 
             times.append(time)
 
+        sample_count = len(self.dataset)
+
         gpu_name = torch.cuda.get_device_name()
-        avg_time = sum(times) / len(times)
+        avg_time = sum(times) / sample_count
 
         classification_accuracy = (true_positives + true_negatives) / (true_positives + true_negatives + false_positives + false_negatives)
         fn_rate = false_negatives / (true_negatives + false_negatives) if true_negatives + false_negatives > 0 else 1.0
@@ -59,7 +61,7 @@ class TestPerformance(unittest.TestCase):
         miss_percentage = 100 * sum(map(lambda x: x > MISS_THRESHOLD, errors)) / len(errors) if len(errors) > 0 else 0.0
         bad_miss_percentage = 100 * sum(map(lambda x: x > BAD_MISS_THRESHOLD, errors)) / len(errors) if len(errors) > 0 else 0.0
 
-        total_errors = 100 * (false_negatives + false_positives + sum(map(lambda x: x > BAD_MISS_THRESHOLD, errors))) / len(errors)
+        total_errors = 100 * (false_negatives + false_positives + sum(map(lambda x: x > BAD_MISS_THRESHOLD, errors))) / sample_count
 
         print("\n")
         print(f'Performance Results...')
