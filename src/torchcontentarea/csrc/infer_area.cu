@@ -11,7 +11,7 @@
 #define INLIER_THRESHOLD 3.0f
 #define MAX_RANSAC_ITERATIONS 10
 #define DISCARD_BORDER 4
-#define CONFIDENCE_THRESHOLD 0.15
+#define CONFIDENCE_THRESHOLD 0.175
 
 #define MAX_POINT_COUNT 32
 #define INVALID_POINT -1
@@ -237,17 +237,8 @@ __global__ void border_guess(const uint8* g_image, const uint image_width, const
         break;
     }
 
-    
-    float x = 0;
-    float xx = 0;
-
-    for (int c = 0; c < 3; c++)
-    {
-        float value = g_image[image_x + image_y * image_width + c * image_width * image_height];
-
-        x += value;
-        xx += value * value;
-    }
+    float x = load_grayscale(g_image, image_x + image_y * image_width, image_width, image_height);
+    float xx = x * x;
     
     // warp reduction....
     #pragma unroll
@@ -280,7 +271,7 @@ __global__ void border_guess(const uint8* g_image, const uint image_width, const
 
         if (lane_index == 0)
         {
-            int count = 3 * blockDim.x * blockDim.y;
+            int count = blockDim.x * blockDim.y;
             g_x[blockIdx.x] = x / count;
             g_xx[blockIdx.x] = xx / count;
         }
@@ -308,7 +299,7 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     remainder -= image_x;
 
     int strip_index = blockIdx.x;
-    int strip_height = image_height / (1.0f + exp(-(strip_index - strip_count / 2.0f + 0.5f)));
+    int strip_height = 1 + (image_height - 2) / (1.0f + exp(-(strip_index - strip_count / 2.0f + 0.5f)));
     
     #pragma unroll
     for (int y = 0; y < 3; y++)
@@ -684,10 +675,10 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     float middle_x_mean = m_hst_x_sums[4];
     float middle_xx_mean = m_hst_xx_sums[4];
 
-    float corner_std = sqrt(corner_xx_mean - corner_x_mean * corner_x_mean);
-    float middle_std = sqrt(middle_xx_mean - middle_x_mean * middle_x_mean);
+    float corner_std_squared = corner_xx_mean - corner_x_mean * corner_x_mean;
+    float middle_std_squared = middle_xx_mean - middle_x_mean * middle_x_mean;
 
-    float border_score = tanh(abs(corner_x_mean - middle_x_mean) / (corner_std + middle_std));
+    float border_score = tanh(abs(corner_x_mean - middle_x_mean) / sqrt(corner_std_squared + middle_std_squared));
     
     // #########################################################
     // Checking circle...
