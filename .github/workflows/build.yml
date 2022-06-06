@@ -13,7 +13,7 @@ on:
 jobs:
   build-wheels:
     name: Build Wheels
-    uses: charliebudd/torch-extension-builder/.github/workflows/build-pytorch-extension-wheels.yml@main
+    uses: charliebudd/torch-extension-builder/.github/workflows/build-pytorch-extension-wheels.yml@tags
 
   test-wheels-locally:
     name: Test Wheels Locally
