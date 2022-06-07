@@ -1,11 +1,12 @@
 import numpy as np
 from torchcontentarea import ContentAreaInference
-from utils import TestDataset, perimeter_distance_score
+from utils import TestDataset, mean_border_distance
 import matplotlib.pyplot as plt
 
 
 def show_image(img, gt_area, area, points_x, points_y, norm_x, norm_y):
     norm_y = [-y for y in norm_y]
+
     plt.rcParams["figure.figsize"] = (15, 10)
     plt.subplot(111).axis("off")
     plt.imshow(img.permute(1, 2, 0).cpu())
@@ -81,7 +82,7 @@ for index, (img, gt_area) in enumerate(dataset):
     area_found = area != None
 
     if expect_area and area_found:
-        score = perimeter_distance_score(gt_area, area)
+        score = mean_border_distance(gt_area, area, img.shape[1:3])
         if show_bad_circles and score > 10:
             print(f"Bad Circle...")
             print(f"Error: {int(score)}px")
