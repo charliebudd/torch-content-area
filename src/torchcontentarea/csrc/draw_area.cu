@@ -4,6 +4,19 @@
 #define BLOCK_SIZE 32
 #define GRID_SIZE(d) ((d / BLOCK_SIZE) + 1)
 
+__global__ void clear(uint8* mask, const uint mask_height, const uint mask_width)
+{
+    uint mask_x = threadIdx.x + blockIdx.x * blockDim.x;
+    uint mask_y = threadIdx.y + blockIdx.y * blockDim.y;
+
+    if (mask_x >= mask_width || mask_y >= mask_height)
+    {
+        return;
+    }
+
+    mask[mask_x + mask_y * mask_width] = 0;
+}
+
 __global__ void draw_circle(const ContentArea area, uint8* mask, const uint mask_height, const uint mask_width)
 {
     uint mask_x = threadIdx.x + blockIdx.x * blockDim.x;
@@ -21,7 +34,7 @@ __global__ void draw_circle(const ContentArea area, uint8* mask, const uint mask
 
     bool in_area = diff < area.r * area.r;
 
-    mask[mask_x + mask_y * mask_width] = in_area ? 1 : 0;
+    mask[mask_x + mask_y * mask_width] = in_area ? 0 : 1;
 }
 
 void ContentAreaInference::draw_area(const ContentArea area, uint8* mask, const uint mask_height, const uint mask_width)
@@ -31,7 +44,7 @@ void ContentAreaInference::draw_area(const ContentArea area, uint8* mask, const 
 
     switch(area.type)
     {
-        case(ContentAreaType::None): break;
+        case(ContentAreaType::None): clear<<<grid, block>>>(mask, mask_height, mask_width); break;
         case(ContentAreaType::Circle): draw_circle<<<grid, block>>>(area, mask, mask_height, mask_width); break;
     }
 }
