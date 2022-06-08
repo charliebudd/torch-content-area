@@ -150,24 +150,28 @@ class DummyDataset(Dataset):
             (400, 250, 360),
             (340, 200, 370),
             (450, 230, 250),
+            None,
         ]
 
     def __len__(self):
         return len(self.areas)
 
     def __getitem__(self, index):
-        area_x, area_y, area_r = self.areas[index]
+        area = self.areas[index]
 
-        coords = torch.stack(torch.meshgrid(torch.arange(0, self.height), torch.arange(0, self.width)))
-        center = torch.Tensor([area_y, area_x]).reshape((2, 1, 1))
+        if area != None:
+            area_x, area_y, area_r = self.areas[index]
+            coords = torch.stack(torch.meshgrid(torch.arange(0, self.height), torch.arange(0, self.width), indexing="ij"))
+            center = torch.Tensor([area_y, area_x]).reshape((2, 1, 1))
+            mask = torch.where(torch.linalg.norm(abs(coords - center), dim=0) < area_r, 0, 1).unsqueeze(0)
+        else:
+            mask = torch.zeros(1, self.height, self.width)
 
-        mask = torch.where(torch.linalg.norm(abs(coords - center), dim=0) > area_r, 0, 1).unsqueeze(0)
-        img = 255 * mask.expand((3, self.height, self.width))
-
+        img = 255 * (1 - mask).expand((3, self.height, self.width))
         img = img.to(dtype=torch.uint8).contiguous()
         mask = mask.to(dtype=torch.uint8).contiguous()
 
-        return img, mask, (area_x, area_y, area_r)
+        return img, mask, area
 
 class TestDataset(Dataset):
     def __init__(self) -> None:
