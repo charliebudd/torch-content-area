@@ -161,7 +161,10 @@ class DummyDataset(Dataset):
 
         if area != None:
             area_x, area_y, area_r = self.areas[index]
-            coords = torch.stack(torch.meshgrid(torch.arange(0, self.height), torch.arange(0, self.width), indexing="ij"))
+            if torch.__version__ >= "1.11":
+                coords = torch.stack(torch.meshgrid(torch.arange(0, self.height), torch.arange(0, self.width), indexing="ij"))
+            else:
+                coords = torch.stack(torch.meshgrid(torch.arange(0, self.height), torch.arange(0, self.width)))
             center = torch.Tensor([area_y, area_x]).reshape((2, 1, 1))
             mask = torch.where(torch.linalg.norm(abs(coords - center), dim=0) < area_r, 0, 1).unsqueeze(0)
         else:
