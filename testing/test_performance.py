@@ -2,7 +2,7 @@ import torch
 import unittest
 
 from torchcontentarea import ContentAreaInference
-from utils import TestDataset, TestDataLoader, timed, perimeter_distance_score
+from utils import TestDataset, TestDataLoader, timed, mean_border_distance
 
 MISS_THRESHOLD=5
 BAD_MISS_THRESHOLD=10
@@ -43,7 +43,7 @@ class TestPerformance(unittest.TestCase):
                     true_positives += 1
 
             if area != None and infered_area != None:
-                error = perimeter_distance_score(area, infered_area)
+                error = mean_border_distance(area, infered_area, img.shape[1:3])
                 errors.append(error)
 
             times.append(time)
@@ -53,9 +53,9 @@ class TestPerformance(unittest.TestCase):
         gpu_name = torch.cuda.get_device_name()
         avg_time = sum(times) / sample_count
 
-        classification_accuracy = (true_positives + true_negatives) / (true_positives + true_negatives + false_positives + false_negatives)
-        fn_rate = false_negatives / (true_negatives + false_negatives) if true_negatives + false_negatives > 0 else 1.0
-        fp_rate = false_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 1.0
+        classification_accuracy = (true_positives + true_negatives) / sample_count
+        fn_rate = false_negatives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 1.0
+        fp_rate = false_positives / (true_negatives + false_positives) if true_negatives + false_positives > 0 else 1.0
 
         avg_error = sum(errors) / len(errors) if len(errors) > 0 else 0.0
         miss_percentage = 100 * sum(map(lambda x: x > MISS_THRESHOLD, errors)) / len(errors) if len(errors) > 0 else 0.0

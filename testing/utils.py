@@ -75,6 +75,55 @@ def perimeter_distance_score(a, b):
 
     return (ab + ba) / 2
 
+def mean_border_distance(circle_a, circle_b, frame_size):
+
+    def closest_point_on_circle(px, py, cx, cy, cr):
+        dx, dy = px - cx, py - cy
+        norm = np.sqrt(dx**2 + dy**2)
+        dx, dy = dx / norm, dy / norm
+        return cx + dx * cr, cy + dy * cr
+
+    def in_bounds(x, y, width, height):
+        return x > 0 and x < width and y > 0 and y < height
+
+    def distance(a_x, a_y, b_x, b_y):
+        return np.sqrt((a_x - b_x)**2 + (a_y - b_y)**2)
+
+    def clamp_to_frame(a_x, a_y, b_x, b_y, width, height):
+        m = (b_y - a_y) / (b_x - a_x)
+        c =  b_y - m * b_x
+        b_x = max(0, min(b_x, width-1))
+        b_y = m*b_x + c
+        b_y = max(0, min(b_y, height-1))
+        b_x = (b_y-c) / m
+        return b_x, b_y
+
+    a_x, a_y, a_r = circle_a
+    b_x, b_y, b_r = circle_b
+    width, height = frame_size
+
+    distances = []
+
+    for theta in np.linspace(0, 2 * np.pi, 360):
+        p1_x = a_x + np.cos(theta) * a_r
+        p1_y = a_y + np.sin(theta) * a_r
+        p2_x, p2_y = closest_point_on_circle(p1_x, p1_y, b_x, b_y, b_r)
+
+        p1_in = in_bounds(p1_x, p1_y, width, height)
+        p2_in = in_bounds(p2_x, p2_y, width, height)
+
+        if not p1_in and not p2_in:
+            continue
+        elif not p1_in:
+            p1_x, p1_y = clamp_to_frame(p2_x, p2_y, p1_x, p1_y, width, height)
+        elif not p2_in:
+            p2_x, p2_y = clamp_to_frame(p1_x, p1_y, p2_x, p2_y, width, height)
+
+        dist = distance(p1_x, p1_y, p2_x, p2_y)
+        distances.append(dist)
+
+    return sum(distances) / len(distances)
+
 def parameter_errors(a, b):
     a_center = np.array([a[0], a[1]])
     a_radius = a[2]
@@ -101,24 +150,28 @@ class DummyDataset(Dataset):
             (400, 250, 360),
             (340, 200, 370),
             (450, 230, 250),
+            None,
         ]
 
     def __len__(self):
         return len(self.areas)
 
     def __getitem__(self, index):
-        area_x, area_y, area_r = self.areas[index]
+        area = self.areas[index]
 
-        coords = torch.stack(torch.meshgrid(torch.arange(0, self.height), torch.arange(0, self.width)))
-        center = torch.Tensor([area_y, area_x]).reshape((2, 1, 1))
+        if area != None:
+            area_x, area_y, area_r = self.areas[index]
+            coords = torch.stack(torch.meshgrid(torch.arange(0, self.height), torch.arange(0, self.width)))
+            center = torch.Tensor([area_y, area_x]).reshape((2, 1, 1))
+            mask = torch.where(torch.linalg.norm(abs(coords - center), dim=0) < area_r, 0, 1).unsqueeze(0)
+        else:
+            mask = torch.zeros(1, self.height, self.width)
 
-        mask = torch.where(torch.linalg.norm(abs(coords - center), dim=0) > area_r, 0, 1).unsqueeze(0)
-        img = 255 * mask.expand((3, self.height, self.width))
-
+        img = 255 * (1 - mask).expand((3, self.height, self.width))
         img = img.to(dtype=torch.uint8).contiguous()
         mask = mask.to(dtype=torch.uint8).contiguous()
 
-        return img, mask, (area_x, area_y, area_r)
+        return img, mask, area
 
 class TestDataset(Dataset):
     def __init__(self) -> None:
