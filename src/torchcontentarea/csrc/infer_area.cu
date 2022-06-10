@@ -5,6 +5,7 @@
 #define MAX_CENTER_DIST 0.15 // * image width
 #define MIN_RADIUS 0.2 // * image width
 #define MAX_RADIUS 0.6 // * image width
+#define INTENSITY_THRESHOLD 20
 #define EDGE_THRESHOLD 4
 #define STRICT_EDGE_THRESHOLD 10.5
 #define ANGLE_THRESHOLD 26
@@ -25,6 +26,13 @@
 __device__ float load_grayscale(const uint8* data, const uint index, const uint x_stride, const uint y_stride)
 {
     return 0.2126f * data[index + 0 * x_stride * y_stride] + 0.7152f * data[index + 1 * x_stride * y_stride] + 0.0722f * data[index + 2 * x_stride * y_stride];
+}
+
+__device__ bool any_less(const float* data, const uint index, const uint x_stride, const uint y_stride, float threshold)
+{
+    return data[index - x_stride - y_stride] < threshold || data[index - y_stride] < threshold || data[index + x_stride - y_stride] < threshold ||
+           data[index - x_stride] < threshold || data[index] < threshold || data[index + x_stride] < threshold ||
+           data[index - x_stride + y_stride] < threshold || data[index - y_stride] < threshold || data[index + x_stride + y_stride] < threshold;
 }
 
 __device__ float sobel_filter(const float* data, const uint index, const uint x_stride, const uint y_stride, float* x_grad, float* y_grad)
@@ -290,6 +298,8 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     __shared__ float s_image_strip[thread_count * 3];
     __shared__ uint s_first_edge_reduction_buffer[warp_count];
     __shared__ uint s_last_edge_reduction_buffer[warp_count];
+    __shared__ uint s_first_thresh_reduction_buffer[warp_count];
+    __shared__ uint s_last_thresh_reduction_buffer[warp_count];
 
     // ============================================================
     // Load strip into shared memory with linear interpolation...
@@ -327,12 +337,17 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     }
 
     bool is_edge = grad > EDGE_THRESHOLD;
+    bool is_above_threshold =  s_image_strip[threadIdx.x + 0 * thread_count] > INTENSITY_THRESHOLD 
+                            || s_image_strip[threadIdx.x + 1 * thread_count] > INTENSITY_THRESHOLD
+                            || s_image_strip[threadIdx.x + 2 * thread_count] > INTENSITY_THRESHOLD;
 
     // ============================================================
     // Reduction to find the first and last edge in strip...
 
     int first_edge = is_edge ? image_x : INVALID_POINT;
     int last_edge = is_edge ? image_x : INVALID_POINT;
+    int first_above_threshold = is_above_threshold ? image_x : INVALID_POINT;
+    int last_above_threshold = is_above_threshold ? image_x : INVALID_POINT;
     
     // warp reduction....
     #pragma unroll
@@ -340,15 +355,27 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     {
         int other_first_edge = __shfl_down_sync(0xffffffff, first_edge, offset);
         int other_last_edge = __shfl_down_sync(0xffffffff, last_edge, offset);
+        int other_first_above_threshold = __shfl_down_sync(0xffffffff, first_above_threshold, offset);
+        int other_last_above_threshold = __shfl_down_sync(0xffffffff, last_above_threshold, offset);
 
         if (first_edge == INVALID_POINT || (other_first_edge != INVALID_POINT && other_first_edge < first_edge))
         {
             first_edge = other_first_edge;
         }
+                
+        if (first_above_threshold == INVALID_POINT || (other_first_above_threshold != INVALID_POINT && other_first_above_threshold < first_above_threshold))
+        {
+            first_above_threshold = other_first_above_threshold;
+        }
         
         if (last_edge == INVALID_POINT || (other_last_edge != INVALID_POINT && other_last_edge > last_edge))
         {
             last_edge = other_last_edge;
+        }
+        
+        if (last_above_threshold == INVALID_POINT || (other_last_above_threshold != INVALID_POINT && other_last_above_threshold > last_above_threshold))
+        {
+            last_above_threshold = other_last_above_threshold;
         }
     }
 
@@ -356,6 +383,8 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     {
         s_first_edge_reduction_buffer[warp_index] = first_edge;
         s_last_edge_reduction_buffer[warp_index] = last_edge;
+        s_first_thresh_reduction_buffer[warp_index] = first_above_threshold;
+        s_last_thresh_reduction_buffer[warp_index] = last_above_threshold;
     }
 
     __syncthreads();
@@ -365,30 +394,44 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     {
         first_edge = s_first_edge_reduction_buffer[lane_index];
         last_edge = s_last_edge_reduction_buffer[lane_index];
+        first_above_threshold = s_first_thresh_reduction_buffer[lane_index];
+        last_above_threshold = s_last_thresh_reduction_buffer[lane_index];
 
         #pragma unroll
         for (int offset = warp_count >> 1 ; offset > 0; offset >>= 1)
         {
             int other_first_edge = __shfl_down_sync(0xffffffff, first_edge, offset);
             int other_last_edge = __shfl_down_sync(0xffffffff, last_edge, offset);
+            int other_first_above_threshold = __shfl_down_sync(0xffffffff, first_above_threshold, offset);
+            int other_last_above_threshold = __shfl_down_sync(0xffffffff, last_above_threshold, offset);
 
             if (first_edge == INVALID_POINT || (other_first_edge != INVALID_POINT && other_first_edge < first_edge))
             {
                 first_edge = other_first_edge;
+            }
+                    
+            if (first_above_threshold == INVALID_POINT || (other_first_above_threshold != INVALID_POINT && other_first_above_threshold < first_above_threshold))
+            {
+                first_above_threshold = other_first_above_threshold;
             }
             
             if (last_edge == INVALID_POINT || (other_last_edge != INVALID_POINT && other_last_edge > last_edge))
             {
                 last_edge = other_last_edge;
             }
+            
+            if (last_above_threshold == INVALID_POINT || (other_last_above_threshold != INVALID_POINT && other_last_above_threshold > last_above_threshold))
+            {
+                last_above_threshold = other_last_above_threshold;
+            }
         }
 
         if (lane_index == 0)
         {
-            g_edge_x[strip_index] = first_edge;
+            g_edge_x[strip_index] = first_edge < first_above_threshold ? first_edge : INVALID_POINT;
             g_edge_y[strip_index] = strip_height;
 
-            g_edge_x[strip_index + strip_count] = last_edge;
+            g_edge_x[strip_index + strip_count] = last_edge > last_above_threshold ? last_edge : INVALID_POINT;
             g_edge_y[strip_index + strip_count] = strip_height;
         }
     }
@@ -436,6 +479,7 @@ __global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge
     if (threadIdx.x > 0 && threadIdx.x < warp_size - 1)
     {
         grad = sobel_filter(s_image_strip, threadIdx.x + warp_size, 1, warp_size, &x_grad, &y_grad);
+        grad *= any_less(s_image_strip, threadIdx.x + warp_size, 1, warp_size, INTENSITY_THRESHOLD);
     }
 
     float center_dir_x = (image_width / 2.0f) - (float)image_x;
