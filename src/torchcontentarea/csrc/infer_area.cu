@@ -48,17 +48,17 @@ __device__ float sobel_filter(const float* data, const uint index, const uint x_
     return sqrt(*x_grad * *x_grad + *y_grad * *y_grad);
 }
 
-__device__ int fast_rand(int seed) 
+__device__ uint fast_rand(uint& seed)
 { 
     seed = 214013 * seed + 2531011; 
     return (seed >> 16) & 0x7FFF; 
 }
 
-__device__ void rand_triplet(int seed, int seed_stride, int max, int* triplet) 
-{ 
-    triplet[0] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;
-    do {triplet[1] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;} while (triplet[1] == triplet[0]);
-    do {triplet[2] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;} while (triplet[2] == triplet[0] || triplet[2] == triplet[1]);
+__device__ void rand_triplet(uint seed, uint seed_stride, uint max, int* triplet) 
+{
+    triplet[0] = fast_rand(seed) % max;
+    do {triplet[1] = fast_rand(seed) % max;} while (triplet[1] == triplet[0]);
+    do {triplet[2] = fast_rand(seed) % max;} while (triplet[2] == triplet[0] || triplet[2] == triplet[1]);
 }
 
 __device__ bool check_circle(float x, float y, float r, uint image_width, uint image_height)
@@ -537,22 +537,54 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
     __shared__ float s_y_reduction_buffer[warp_count];
     __shared__ float s_r_reduction_buffer[warp_count];
 
+    __shared__ int valid_point_count;
+
+    const uint warp_index = threadIdx.x >> 5;
+    const uint lane_index = threadIdx.x & 31;
+
+    valid_point_count = point_count;
+
     if (threadIdx.x < point_count)
     {
         s_edge_x[threadIdx.x] = g_edge_x[threadIdx.x];
         s_edge_y[threadIdx.x] = g_edge_y[threadIdx.x];
         s_norm_x[threadIdx.x] = g_norm_x[threadIdx.x];
         s_norm_y[threadIdx.x] = g_norm_y[threadIdx.x];
+
+        if (threadIdx.x == 0)
+        {
+            int count = 0;
+
+            for (int i = 0; i < point_count; i++)
+            {
+                if (s_edge_x[i] != INVALID_POINT)
+                {
+                    s_edge_x[count] = g_edge_x[i];
+                    s_edge_y[count] = g_edge_y[i];
+                    s_norm_x[count] = g_norm_x[i];
+                    s_norm_y[count] = g_norm_y[i];
+                    count++;
+                }
+                
+            }
+
+            valid_point_count = count;
+        }
     }
-    
+
     __syncthreads();
 
-    const uint warp_index = threadIdx.x >> 5;
-    const uint lane_index = threadIdx.x & 31;
+    if (valid_point_count < 3)
+    {   
+        if (threadIdx.x == 0)
+            g_circle[3] = 0.0;
+
+        return;
+    }
 
     int inlier_count = 3;
     int inliers[MAX_POINT_COUNT];
-    rand_triplet(threadIdx.x, blockDim.x, point_count, inliers);
+    rand_triplet(threadIdx.x * 42342, blockDim.x, valid_point_count, inliers);
 
     float circle_x, circle_y, circle_r;
     float circle_score = 0.0f;
@@ -564,7 +596,7 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
         inlier_count = 0;
         circle_score = 0.0f;
 
-        for (int point_index = 0; point_index < point_count; point_index++)
+        for (int point_index = 0; point_index < valid_point_count; point_index++)
         {
             int edge_x = s_edge_x[point_index];
             int edge_y = s_edge_y[point_index];
@@ -592,7 +624,7 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
             }
         }
 
-        circle_score /= point_count;
+        circle_score /= valid_point_count;
     }
 
     bool circle_valid = check_circle(circle_x, circle_y, circle_r, image_width, image_height);
@@ -675,7 +707,7 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
 #define border_guess_sample_size 8
 #define border_guess_warp_count WARP_COUNT(border_guess_sample_size * border_guess_sample_size)
 
-#define ransac_threads 128
+#define ransac_threads 32
 #define ransac_warps WARP_COUNT(ransac_threads)
 
 ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
