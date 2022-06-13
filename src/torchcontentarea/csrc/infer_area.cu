@@ -2,18 +2,16 @@
 #include "content_area_inference.cuh"
 
 // TODO, expose params
-#define MAX_CENTER_DIST 0.15 // * image width
-#define MIN_RADIUS 0.2 // * image width
-#define MAX_RADIUS 0.6 // * image width
-
-#define INTENSITY_THRESHOLD 20
-#define EDGE_THRESHOLD 4
-#define STRICT_EDGE_THRESHOLD 10
+#define INTENSITY_THRESHOLD 13
+#define EDGE_THRESHOLD 10
 #define ANGLE_THRESHOLD 26
-#define INLIER_THRESHOLD 3
-#define DISCARD_BORDER 4
-#define CONFIDENCE_THRESHOLD 0.2
+#define CONFIDENCE_THRESHOLD 0.1
 
+#define MAX_CENTER_DIST 0.2 // * image width
+#define MIN_RADIUS 0.2 // * image width
+#define MAX_RADIUS 0.72 // * image width
+#define INLIER_THRESHOLD 3
+#define DISCARD_BORDER 3
 #define MAX_RANSAC_ITERATIONS 10
 #define MAX_POINT_COUNT 32
 #define INVALID_POINT -1
@@ -288,7 +286,7 @@ __global__ void border_guess(const uint8* g_image, const uint image_width, const
 }
 
 template<int warp_count>
-__global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, const uint image_width, const uint image_height, const uint strip_count)
+__global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, uint* g_enclosed_x, uint* g_enclosed_y, const uint image_width, const uint image_height, const uint strip_count)
 {
     constexpr uint warp_size = 32;
     constexpr uint thread_count = warp_count * warp_size;
@@ -305,12 +303,14 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     // ============================================================
     // Load strip into shared memory with linear interpolation...
 
-    float remainder = threadIdx.x * image_width / (float)thread_count;
+    float scale_factor = image_width / (float)thread_count;
+    float remainder = threadIdx.x * scale_factor;
     int image_x = remainder;
     remainder -= image_x;
 
     int strip_index = blockIdx.x;
     int strip_height = 1 + (image_height - 2) / (1.0f + exp(-(strip_index - strip_count / 2.0f + 0.5f)));
+    // int strip_height = (strip_index + 0.5) * image_height / strip_count;
     
     #pragma unroll
     for (int y = 0; y < 3; y++)
@@ -337,7 +337,7 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
         grad = sobel_filter(s_image_strip, threadIdx.x + thread_count, 1, thread_count, &x_grad, &y_grad);
     }
 
-    bool is_edge = grad > EDGE_THRESHOLD;
+    bool is_edge = grad > EDGE_THRESHOLD / scale_factor;
     bool is_above_threshold =  s_image_strip[threadIdx.x + 0 * thread_count] > INTENSITY_THRESHOLD 
                             || s_image_strip[threadIdx.x + 1 * thread_count] > INTENSITY_THRESHOLD
                             || s_image_strip[threadIdx.x + 2 * thread_count] > INTENSITY_THRESHOLD;
@@ -429,16 +429,20 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
 
         if (lane_index == 0)
         {
-            g_edge_x[strip_index] = first_edge < first_above_threshold ? first_edge : INVALID_POINT;
+            g_edge_x[strip_index] = first_edge <= first_above_threshold ? first_edge : INVALID_POINT;
             g_edge_y[strip_index] = strip_height;
+            g_enclosed_x[strip_index] = first_above_threshold;
+            g_enclosed_y[strip_index] = strip_height;
 
-            g_edge_x[strip_index + strip_count] = last_edge > last_above_threshold ? last_edge : INVALID_POINT;
+            g_edge_x[strip_index + strip_count] = last_edge >= last_above_threshold ? last_edge : INVALID_POINT;
             g_edge_y[strip_index + strip_count] = strip_height;
+            g_enclosed_x[strip_index + strip_count] = last_above_threshold;
+            g_enclosed_y[strip_index + strip_count] = strip_height;
         }
     }
 }
 
-__global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, float* g_norm_x, float* g_norm_y, const uint image_width, const uint image_height, const uint strip_count)
+__global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, float* g_norm_x, float* g_norm_y, uint* g_enclosed_x, uint* g_enclosed_y, const uint image_width, const uint image_height, const uint strip_count)
 {
     constexpr uint warp_size = 32;
 
@@ -490,7 +494,7 @@ __global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge
 
     float dot = (center_dir_x * x_grad + center_dir_y * y_grad) / (center_dir_norm * grad);
 
-    bool is_edge = grad > STRICT_EDGE_THRESHOLD &&  dot > cos(ANGLE_THRESHOLD * DEG2RAD);
+    bool is_edge = grad > EDGE_THRESHOLD &&  dot > cos(ANGLE_THRESHOLD * DEG2RAD);
 
     x_grad /= grad;
     y_grad /= grad;
@@ -526,12 +530,14 @@ __global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge
 }
 
 template<int warp_count>
-__global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const float* g_norm_x, const float* g_norm_y, float* g_circle, const uint point_count, const uint image_height, const uint image_width)
+__global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const float* g_norm_x, const float* g_norm_y, uint* g_enclosed_x, uint* g_enclosed_y, float* g_circle, const uint point_count, const uint image_height, const uint image_width)
 {
     __shared__ uint s_edge_x[MAX_POINT_COUNT];
     __shared__ uint s_edge_y[MAX_POINT_COUNT];
     __shared__ float s_norm_x[MAX_POINT_COUNT];
     __shared__ float s_norm_y[MAX_POINT_COUNT];
+    __shared__ float s_enclosed_y[MAX_POINT_COUNT];
+    __shared__ float s_enclosed_x[MAX_POINT_COUNT];
 
     __shared__ float s_score_reduction_buffer[warp_count];
     __shared__ float s_x_reduction_buffer[warp_count];
@@ -539,6 +545,7 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
     __shared__ float s_r_reduction_buffer[warp_count];
 
     __shared__ int valid_point_count;
+    __shared__ int valid_enclosed_point_count;
 
     const uint warp_index = threadIdx.x >> 5;
     const uint lane_index = threadIdx.x & 31;
@@ -551,6 +558,8 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
         s_edge_y[threadIdx.x] = g_edge_y[threadIdx.x];
         s_norm_x[threadIdx.x] = g_norm_x[threadIdx.x];
         s_norm_y[threadIdx.x] = g_norm_y[threadIdx.x];
+        s_enclosed_x[threadIdx.x] = g_enclosed_x[threadIdx.x];
+        s_enclosed_y[threadIdx.x] = g_enclosed_y[threadIdx.x];
 
         if (threadIdx.x == 0)
         {
@@ -570,6 +579,23 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
             }
 
             valid_point_count = count;
+        }
+        else if (threadIdx.x == 1)
+        {
+            int count = 0;
+
+            for (int i = 0; i < point_count; i++)
+            {
+                if (g_enclosed_x[i] != INVALID_POINT)
+                {
+                    s_enclosed_x[count] = g_enclosed_x[i];
+                    s_enclosed_y[count] = g_enclosed_y[i];
+                    count++;
+                }
+                
+            }
+
+            valid_enclosed_point_count = count;
         }
     }
 
@@ -625,7 +651,29 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
             }
         }
 
-        circle_score /= valid_point_count;
+
+        float inlier_score = 0.0f;
+
+        for (int point_index = 0; point_index < valid_enclosed_point_count; point_index++)
+        {
+            int x = s_enclosed_x[point_index];
+            int y = s_enclosed_y[point_index];
+
+            float delta_x = circle_x - x;
+            float delta_y = circle_y - y;
+
+            float delta = sqrt(delta_x * delta_x + delta_y * delta_y);
+
+            if (delta < circle_r + INLIER_THRESHOLD)
+            {
+               inlier_score += 1.0f;
+            }
+        }
+
+        circle_score /= point_count;
+        inlier_score /= point_count;
+
+        circle_score *= inlier_score;
     }
 
     bool circle_valid = check_circle(circle_x, circle_y, circle_r, image_width, image_height);
@@ -703,7 +751,7 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
 // Main function...
 
 #define warp_size 32
-#define find_points_warp_count 16
+#define find_points_warp_count 8
 
 #define border_guess_sample_size 8
 #define border_guess_warp_count WARP_COUNT(border_guess_sample_size * border_guess_sample_size)
@@ -725,18 +773,18 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
 
     dim3 find_points_grid(m_height_samples);
     dim3 find_points_block(warp_size * find_points_warp_count);
-    find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, m_height_samples);
+    find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_enclosed_x, m_dev_enclosed_y, image_width, image_height, m_height_samples);
 
     dim3 refine_points_grid(m_point_count);
     dim3 refine_points_block(warp_size);
-    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, image_width, image_height, m_height_samples);
+    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, m_dev_enclosed_x, m_dev_enclosed_y, image_width, image_height, m_height_samples);
 
     // #########################################################
     // Fitting circle to candididate points...
 
     dim3 rand_ransac_grid(1);
     dim3 rand_ransac_block(ransac_threads);
-    rand_ransac<ransac_warps><<<rand_ransac_grid, rand_ransac_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, m_dev_circle, m_point_count, image_height, image_width);
+    rand_ransac<ransac_warps><<<rand_ransac_grid, rand_ransac_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, m_dev_enclosed_x, m_dev_enclosed_y, m_dev_circle, m_point_count, image_height, image_width);
 
     // #########################################################
     // Reading back results...
@@ -814,7 +862,7 @@ std::vector<std::vector<float>> ContentAreaInference::get_debug(uint8* image, co
     // #########################################################
     // Checking border...
 
-    std::vector<float> points_x, points_y, norm_x, norm_y, circle, scores;
+    std::vector<float> points_x, points_y, norm_x, norm_y, enclosed_x, enclosed_y, circle, scores;
 
     for (int i = 0; i < m_point_count; i++)
     {
@@ -822,6 +870,8 @@ std::vector<std::vector<float>> ContentAreaInference::get_debug(uint8* image, co
         points_y.push_back(m_hst_edge_y[i]);
         norm_x.push_back(m_hst_norm_x[i]);
         norm_y.push_back(m_hst_norm_y[i]);
+        enclosed_x.push_back(m_hst_enclosed_x[i]);
+        enclosed_y.push_back(m_hst_enclosed_y[i]);
     }
 
     circle.push_back(circle_x);
@@ -837,6 +887,8 @@ std::vector<std::vector<float>> ContentAreaInference::get_debug(uint8* image, co
     result.push_back(points_y);
     result.push_back(norm_x);
     result.push_back(norm_y);
+    result.push_back(enclosed_x);
+    result.push_back(enclosed_y);
     result.push_back(circle);
     result.push_back(scores);
 
