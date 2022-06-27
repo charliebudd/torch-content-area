@@ -31,19 +31,19 @@ public:
     std::vector<std::vector<float>> get_debug(uint8* image, const uint image_height, const uint image_width);
 
 private:
-    uint m_height_samples, m_point_count, m_buffer_size;
+    uint m_height_samples;
+    uint m_point_count;
+    uint m_buffer_size;
 
-    void *m_hst_buffer;
-    uint *m_hst_edge_x, *m_hst_edge_y;
-    float *m_hst_norm_x, *m_hst_norm_y;
-    uint *m_hst_enclosed_x, *m_hst_enclosed_y;
-    float *m_hst_x_sums, *m_hst_xx_sums;
+    void  *m_hst_buffer;
+    uint  *m_hst_edge_x;
+    uint  *m_hst_edge_y;
+    float *m_hst_edge_scores;
     float *m_hst_circle;
     
-    void *m_dev_buffer;
-    uint *m_dev_edge_x, *m_dev_edge_y;
-    float *m_dev_norm_x, *m_dev_norm_y;
-    uint *m_dev_enclosed_x, *m_dev_enclosed_y;
-    float *m_dev_x_sums, *m_dev_xx_sums;
+    void  *m_dev_buffer;
+    uint  *m_dev_edge_x;
+    uint  *m_dev_edge_y;
+    float *m_dev_edge_scores;
     float *m_dev_circle;
 };
