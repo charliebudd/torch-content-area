@@ -5,29 +5,19 @@ ContentAreaInference::ContentAreaInference()
 {
     m_height_samples = 8;
     m_point_count = 2 * m_height_samples;
-    m_buffer_size = (4 + 2 * 5 + 6 * m_point_count) * sizeof(uint);
+    m_buffer_size = 10 * (3 * m_point_count + 4) * sizeof(uint);
 
     cudaMallocHost(&m_hst_buffer, m_buffer_size);
-    m_hst_edge_x = (uint*)m_hst_buffer + 0 * m_point_count;
-    m_hst_edge_y = (uint*)m_hst_buffer + 1 * m_point_count;
-    m_hst_norm_x = (float*)m_hst_buffer + 2 * m_point_count;
-    m_hst_norm_y = (float*)m_hst_buffer + 3 * m_point_count;
-    m_hst_enclosed_x = (uint*)m_hst_buffer + 4 * m_point_count;
-    m_hst_enclosed_y = (uint*)m_hst_buffer + 5 * m_point_count;
-    m_hst_x_sums = (float*)m_hst_buffer + 6 * m_point_count;
-    m_hst_xx_sums = (float*)m_hst_buffer + (6 * m_point_count + 5);
-    m_hst_circle = (float*)m_hst_buffer + (6 * m_point_count + 2 * 5);
+    m_hst_edge_x =      (uint*) m_hst_buffer + 0 * m_point_count;
+    m_hst_edge_y =      (uint*) m_hst_buffer + 1 * m_point_count;
+    m_hst_edge_scores = (float*)m_hst_buffer + 2 * m_point_count;
+    m_hst_circle =      (float*)m_hst_buffer + 3 * m_point_count;
 
     cudaMalloc(&m_dev_buffer, m_buffer_size);
-    m_dev_edge_x = (uint*)m_dev_buffer + 0 * m_point_count;
-    m_dev_edge_y = (uint*)m_dev_buffer + 1 * m_point_count;
-    m_dev_norm_x = (float*)m_dev_buffer + 2 * m_point_count;
-    m_dev_norm_y = (float*)m_dev_buffer + 3 * m_point_count;
-    m_dev_enclosed_x = (uint*)m_dev_buffer + 4 * m_point_count;
-    m_dev_enclosed_y = (uint*)m_dev_buffer + 5 * m_point_count;
-    m_dev_x_sums = (float*)m_dev_buffer + 6 * m_point_count;
-    m_dev_xx_sums = (float*)m_dev_buffer + (6 * m_point_count + 5);
-    m_dev_circle = (float*)m_dev_buffer + (6 * m_point_count + 2 * 5);
+    m_dev_edge_x =      (uint*) m_dev_buffer + 0 * m_point_count;
+    m_dev_edge_y =      (uint*) m_dev_buffer + 1 * m_point_count;
+    m_dev_edge_scores = (float*)m_dev_buffer + 2 * m_point_count;
+    m_dev_circle =      (float*)m_dev_buffer + 3 * m_point_count;
 }
 
 ContentAreaInference::~ContentAreaInference()
