@@ -5,15 +5,16 @@
 #define INTENSITY_THRESHOLD 25
 #define EDGE_THRESHOLD 20
 #define ANGLE_THRESHOLD 30
-#define EDGE_CONFIDENCE_THRESHOLD 0.05
+#define EDGE_CONFIDENCE_THRESHOLD 0.03
 #define CONFIDENCE_THRESHOLD 0.06
 
 #define MAX_CENTER_DIST 0.2 // * image width
 #define MIN_RADIUS 0.2 // * image width
 #define MAX_RADIUS 0.72 // * image width
-#define INLIER_THRESHOLD 3
+
 #define DISCARD_BORDER 3
-#define MAX_RANSAC_ITERATIONS 10
+#define RANSAC_INLIER_THRESHOLD 3
+#define RANSAC_ITERATIONS 3
 #define MAX_POINT_COUNT 32
 #define INVALID_POINT -1
 #define DEG2RAD 0.01745329251f
@@ -314,8 +315,11 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     // ============================================================
     // Reduction to find the best edge...
 
-    int best_edge_x = threadIdx.x <= DISCARD_BORDER || point_score < EDGE_CONFIDENCE_THRESHOLD ? INVALID_POINT : image_x;
-    float best_edge_score = point_score;
+    
+    bool is_valid = threadIdx.x > DISCARD_BORDER && point_score >= EDGE_CONFIDENCE_THRESHOLD;
+
+    int best_edge_x = is_valid ? image_x : INVALID_POINT;
+    float best_edge_score = is_valid ? point_score : 0.0f;
     
     // warp reduction....
     #pragma unroll
@@ -374,20 +378,17 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
     __shared__ uint s_edge_x[MAX_POINT_COUNT];
     __shared__ uint s_edge_y[MAX_POINT_COUNT];
     __shared__ float s_edge_scores[MAX_POINT_COUNT];
+    __shared__ int s_valid_point_count;
 
     __shared__ float s_score_reduction_buffer[warp_count];
     __shared__ float s_x_reduction_buffer[warp_count];
     __shared__ float s_y_reduction_buffer[warp_count];
     __shared__ float s_r_reduction_buffer[warp_count];
 
-    __shared__ int valid_point_count;
-    __shared__ int valid_enclosed_point_count;
-
     const uint warp_index = threadIdx.x >> 5;
     const uint lane_index = threadIdx.x & 31;
 
-    valid_point_count = point_count;
-
+    // Loading points to shared memory...
     if (threadIdx.x < point_count)
     {
         s_edge_x[threadIdx.x] = g_edge_x[threadIdx.x];
@@ -395,58 +396,63 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
         s_edge_scores[threadIdx.x] = g_edge_scores[threadIdx.x];
     }
 
-    // Stream compaction...
+    // Point compaction...
     bool has_point = threadIdx.x < point_count && s_edge_x[threadIdx.x] != INVALID_POINT;
     int preceeding_count = has_point;
 
-    #pragma unroll
-    for (int d=1; d < 32; d<<=1) 
+    if (warp_index == 0)
     {
-        float other_count = __shfl_up_sync(0xffffffff, preceeding_count, d);
-
-        if (lane_index >= d) 
+        #pragma unroll
+        for (int d=1; d < 32; d<<=1) 
         {
-            preceeding_count += other_count;
+            float other_count = __shfl_up_sync(0xffffffff, preceeding_count, d);
+
+            if (lane_index >= d) 
+            {
+                preceeding_count += other_count;
+            }
         }
-    }
 
-    if (has_point)
-    {
-        s_edge_x[preceeding_count - 1] = s_edge_x[threadIdx.x];
-        s_edge_y[preceeding_count - 1] = s_edge_y[threadIdx.x];
-        s_edge_scores[preceeding_count - 1] = s_edge_scores[threadIdx.x];
-    }
+        if (has_point)
+        {
+            s_edge_x[preceeding_count - 1] = s_edge_x[threadIdx.x];
+            s_edge_y[preceeding_count - 1] = s_edge_y[threadIdx.x];
+            s_edge_scores[preceeding_count - 1] = s_edge_scores[threadIdx.x];
+        }
 
-    if (lane_index == 31)
-    {
-        valid_point_count = preceeding_count;
+        if (lane_index == 31)
+        {
+            s_valid_point_count = preceeding_count;
+        }
     }
 
     __syncthreads();
 
-    if (valid_point_count < 3)
+    if (s_valid_point_count < 3)
     {   
-        if (threadIdx.x == 0)
-            g_circle[3] = 0.0;
+        if (threadIdx.x < 4)
+        {
+            g_circle[threadIdx.x] = 0.0;
+        }
 
         return;
     }
 
     int inlier_count = 3;
     int inliers[MAX_POINT_COUNT];
-    rand_triplet(threadIdx.x * 42342, blockDim.x, valid_point_count, inliers);
+    rand_triplet(threadIdx.x * 42342, blockDim.x, s_valid_point_count, inliers);
 
     float circle_x, circle_y, circle_r;
     float circle_score = 0.0f;
 
-    for (int i = 0; i < MAX_RANSAC_ITERATIONS; i++)
+    for (int i = 0; i < RANSAC_ITERATIONS; i++)
     {
         fit_circle(inlier_count, inliers, s_edge_x, s_edge_y, &circle_x, &circle_y, &circle_r);
         
         inlier_count = 0;
         circle_score = 0.0f;
 
-        for (int point_index = 0; point_index < valid_point_count; point_index++)
+        for (int point_index = 0; point_index < s_valid_point_count; point_index++)
         {
             int edge_x = s_edge_x[point_index];
             int edge_y = s_edge_y[point_index];
@@ -460,7 +466,7 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
                 float delta = sqrt(delta_x * delta_x + delta_y * delta_y);
                 float error = abs(circle_r - delta);
 
-                if (error < INLIER_THRESHOLD)
+                if (error < RANSAC_INLIER_THRESHOLD)
                 {
                     circle_score += edge_score;
 
