@@ -1,6 +1,6 @@
 #pragma once
 
-#include "profiling.h"
+#include <vector>
 
 typedef unsigned int uint;
 typedef unsigned char uint8;
@@ -25,10 +25,11 @@ public:
     ~ContentAreaInference();
 
     ContentArea infer_area(uint8* image, const uint image_height, const uint image_width);
+    ContentArea infer_area_hybrid(float* image, const uint image_height, const uint image_width, const uint strip_count);
     void draw_area(const ContentArea area, uint8* mask, const uint mask_height, const uint mask_width);
     void crop_area(const ContentArea area, const uint8* src_image, uint8* dst_image, const uint src_width, const uint src_height, const uint dst_width, const uint dst_height, const InterpolationMode interpolation_mode);
 
-    std::vector<std::vector<float>> get_debug(uint8* image, const uint image_height, const uint image_width);
+    std::vector<std::vector<float>> get_debug();
 
 private:
     uint m_height_samples;
