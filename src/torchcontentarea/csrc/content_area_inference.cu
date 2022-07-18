@@ -3,7 +3,7 @@
 
 ContentAreaInference::ContentAreaInference()
 {
-    m_height_samples = 8;
+    m_height_samples = 16;
     m_point_count = 2 * m_height_samples;
     m_buffer_size = 10 * (3 * m_point_count + 4) * sizeof(uint);
 

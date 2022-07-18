@@ -1,10 +1,6 @@
 #include <torch/extension.h>
 #include "content_area_inference.cuh"
 
-#ifdef PROFILE
-#include <cuda_runtime.h>
-#endif
-
 ContentArea area_from_pyobject(py::object object)
 {
     if (object == py::none())
@@ -38,6 +34,20 @@ py::object infer_area_wrapper(ContentAreaInference &self, torch::Tensor image)
     uint width = image.size(2);
 
     ContentArea area = self.infer_area(image.data_ptr<uint8>(), height, width);
+
+    return pyobject_from_area(area);
+}
+
+
+py::object infer_area_hybrid_wrapper(ContentAreaInference &self, torch::Tensor image, torch::Tensor edges) 
+{
+    edges = edges.contiguous();
+
+    uint height = image.size(1);
+    uint width = image.size(2);
+    uint strip_count = edges.size(0);
+
+    ContentArea area = self.infer_area_hybrid(edges.data_ptr<float>(), height, width, strip_count);
 
     return pyobject_from_area(area);
 }
@@ -92,14 +102,9 @@ torch::Tensor infer_mask_wrapper(ContentAreaInference &self, torch::Tensor image
     return mask;
 }
 
-std::vector<std::vector<float>> get_debug_wrapper(ContentAreaInference &self, torch::Tensor image)
+std::vector<std::vector<float>> get_debug_wrapper(ContentAreaInference &self)
 {
-    image = image.contiguous();
-
-    uint height = image.size(1);
-    uint width = image.size(2);
-
-    return self.get_debug(image.data_ptr<uint8>(), height, width);
+    return self.get_debug();
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) 
@@ -107,16 +112,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     pybind11::class_<ContentAreaInference>(m, "ContentAreaInference")
         .def(py::init())
         .def("_ContentAreaInference__infer_area", &infer_area_wrapper)
+        .def("_ContentAreaInference__infer_area_hybrid", &infer_area_hybrid_wrapper)
         .def("_ContentAreaInference__draw_mask", &draw_area_wrapper)
         .def("_ContentAreaInference__crop_area", &crop_area_wrapper)
         .def("_ContentAreaInference__infer_mask", &infer_mask_wrapper)
         .def("_ContentAreaInference__get_debug", &get_debug_wrapper);
-
-    #ifdef PROFILE
-    m.def("get_times",
-        []() {
-            return GET_TIMES();
-        }
-    );
-    #endif
 }
