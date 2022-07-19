@@ -1,12 +1,21 @@
 import torch
 import math
 from torch.nn.functional import pad
-from torchvision.transforms.functional import normalize
 
 model = None
 
 norm_means = (0.3441, 0.2251, 0.2203)
 norm_stds = (0.2381, 0.1994, 0.1939)
+
+def normalise(tensor, mean, std):
+    mean = torch.as_tensor(mean, device=tensor.device)
+    std = torch.as_tensor(std, device=tensor.device)
+    if mean.ndim == 1:
+        mean = mean.view(-1, 1, 1)
+    if std.ndim == 1:
+        std = std.view(-1, 1, 1)
+    tensor.sub_(mean).div_(std)
+    return tensor
 
 def add_coords(tensor):
     x, y = torch.arange(0, tensor.shape[1], device=tensor.device) / tensor.shape[1], torch.arange(0, tensor.shape[2], device=tensor.device) / tensor.shape[2]
@@ -24,7 +33,7 @@ def get_strip_scores(image):
     kernel_size = 7
     strip_count = 16
 
-    new_image = add_coords(normalize(image / 255, norm_means, norm_stds))
+    new_image = add_coords(normalise(image / 255, norm_means, norm_stds))
     
     image_height = new_image.shape[1]
     strip_heigths = [int(1 + (image_height - 2) / (1.0 + math.exp(-(i - strip_count / 2.0 + 0.5)/(strip_count / 8.0)))) for i in range(strip_count)]
