@@ -54,13 +54,18 @@ jobs:
             python -m pip install -U --force-reinstall pip
             python -m pip install numpy pillow torch==${{ matrix.pytorch }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda }} | sed 's/\.//')/torch_stable.html
           fi
+          
+          ln -s ../eca-data eca-data
 
           python -V
           pip show torch
+          pip show ecadataset
         
       - name: Install torchcontentarea From PyPI Index
         if: ${{ !inputs.local-wheels }}
-        run: python -m pip install --force-reinstall torchcontentarea -i ${{ inputs.wheel-location }}
+        run: |
+          . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
+          python -m pip install --force-reinstall torchcontentarea -i ${{ inputs.wheel-location }}
         
       - name: Download Cached Wheels
         if: ${{ inputs.local-wheels }}
@@ -71,7 +76,11 @@ jobs:
           
       - name: Install torchcontentarea from Cached Wheels
         if: ${{ inputs.local-wheels }}
-        run: python -m pip install ${{ inputs.wheel-location }}/torchcontentarea*cp$(echo ${{ matrix.python }} | sed 's/\.//')*.whl
+        run: |
+          . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
+          python -m pip install ${{ inputs.wheel-location }}/torchcontentarea*cp$(echo ${{ matrix.python }} | sed 's/\.//')*.whl
 
       - name: Run Tests
-        run: python -m unittest discover -s testing
+        run: |
+          . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
+          python -m unittest discover -s testing
