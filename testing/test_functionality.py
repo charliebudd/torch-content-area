@@ -1,28 +1,32 @@
-import unittest
 import torch
+import unittest
 
-from utils import DummyDataset, TestDataLoader, iou_score
+from utils.data import DummyDataset, TestDataLoader
+from utils.scoring import content_area_hausdorff, MISS_THRESHOLD
+
 from torchcontentarea import ContentAreaInference
+
+def iou_score(a, b):
+    SMOOTH = 1
+    intersection = torch.logical_and(a, b).sum()
+    union = torch.logical_or(a, b).sum()
+    iou = (intersection + SMOOTH) / (union + SMOOTH)
+    return iou.item()
 
 class TestAPI(unittest.TestCase):
 
     def __init__(self, methodName: str = ...) -> None:
         super().__init__(methodName)
-        self.dataloader = TestDataLoader(DummyDataset())
+        self.dataset = DummyDataset()
+        self.dataloader = TestDataLoader(self.dataset)
         self.content_area_inference = ContentAreaInference()
 
     def test_infer_area(self):
         for img, mask, area in self.dataloader:
             img, mask = img.cuda(), mask.cuda()
             infered_area = self.content_area_inference.infer_area(img)
-            if area == None or infered_area == None:
-                if area == None:
-                    self.assertIsNone(infered_area)
-                else:
-                    self.assertIsNotNone(infered_area)
-            else:
-                for x, y in zip(area, infered_area):
-                    self.assertAlmostEqual(x, y, delta=2)
+            distance, _ = content_area_hausdorff(area, infered_area, img.shape[1:]) 
+            self.assertLess(distance, MISS_THRESHOLD)
 
     def test_infer_mask(self):
         for img, mask, _ in self.dataloader:
