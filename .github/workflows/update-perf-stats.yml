@@ -51,7 +51,7 @@ jobs:
         name: Run Tests
         run: |
           . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
-          RESULTS=$(python testing/test_performance.py | grep '-')
+          RESULTS=$(python testing/test_performance.py | grep -e '^Performance' -e '^- ' -B 1)
           RESULTS=$(printf '%s\n' "$RESULTS" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
 
           START="<!-- performance stats start -->"
