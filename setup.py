@@ -22,6 +22,7 @@ setup(
     license="MIT",
     packages=["torchcontentarea"],
     package_dir={"":"src"},
+    package_data={'torchcontentarea': ['models/*.pt']},
     ext_modules=[cpp_extension.CUDAExtension("__torchcontentareaext", ext_source_files, extra_compile_args=compile_args)],
     cmdclass=versioneer.get_cmdclass({"build_ext": cpp_extension.BuildExtension})
 )

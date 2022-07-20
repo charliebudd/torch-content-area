@@ -2,20 +2,27 @@
 #include "content_area_inference.cuh"
 
 // TODO, expose params
-#define MAX_CENTER_DIST 0.15 // * image width
-#define MIN_RADIUS 0.2 // * image width
-#define MAX_RADIUS 0.6 // * image width
-#define EDGE_THRESHOLD 4
-#define STRICT_EDGE_THRESHOLD 10.5
-#define ANGLE_THRESHOLD 26
-#define INLIER_THRESHOLD 3.0f
-#define MAX_RANSAC_ITERATIONS 10
-#define DISCARD_BORDER 4
-#define CONFIDENCE_THRESHOLD 0.175
+#define INTENSITY_THRESHOLD 25
+#define EDGE_THRESHOLD 20
+#define ANGLE_THRESHOLD 30
 
+#define EDGE_CONFIDENCE_THRESHOLD 0.03
+#define CONFIDENCE_THRESHOLD 0.06
+
+#define HYBRID_EDGE_CONFIDENCE_THRESHOLD 0.03
+#define HYBRID_CONFIDENCE_THRESHOLD 0.06
+
+#define MAX_CENTER_DIST 0.2 // * image width
+#define MIN_RADIUS 0.2 // * image width
+#define MAX_RADIUS 0.8 // * image width
+
+#define DISCARD_BORDER 3
+#define RANSAC_INLIER_THRESHOLD 3
+#define RANSAC_ITERATIONS 3
 #define MAX_POINT_COUNT 32
 #define INVALID_POINT -1
 #define DEG2RAD 0.01745329251f
+#define RAD2DEG (1.0f / DEG2RAD)
 
 #define WARP_COUNT(x) ((x - 1) >> 5) + 1
 
@@ -40,17 +47,23 @@ __device__ float sobel_filter(const float* data, const uint index, const uint x_
     return sqrt(*x_grad * *x_grad + *y_grad * *y_grad);
 }
 
-__device__ int fast_rand(int seed) 
+__device__ void triangle_indices(const int n, const int k, int& i, int& j)
+{
+    i = n - 2 - floor(sqrt(-8*k + 4*n*(n-1)-7)/2.0 - 0.5);
+    j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2;
+}
+
+__device__ uint fast_rand(uint& seed)
 { 
     seed = 214013 * seed + 2531011; 
     return (seed >> 16) & 0x7FFF; 
 }
 
-__device__ void rand_triplet(int seed, int seed_stride, int max, int* triplet) 
-{ 
-    triplet[0] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;
-    do {triplet[1] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;} while (triplet[1] == triplet[0]);
-    do {triplet[2] = fast_rand(0.3 * seed) % max; seed += 3 * seed_stride;} while (triplet[2] == triplet[0] || triplet[2] == triplet[1]);
+__device__ void rand_triplet(uint seed, uint seed_stride, uint max, int* triplet) 
+{
+    triplet[0] = fast_rand(seed) % max;
+    do {triplet[1] = fast_rand(seed) % max;} while (triplet[1] == triplet[0]);
+    do {triplet[2] = fast_rand(seed) % max;} while (triplet[2] == triplet[0] || triplet[2] == triplet[1]);
 }
 
 __device__ bool check_circle(float x, float y, float r, uint image_width, uint image_height)
@@ -148,171 +161,163 @@ __device__ bool Cholesky3x3(float lhs[3][3], float rhs[3])
 
 __device__ void fit_circle(int point_count, int* indices, uint* points_x, uint* points_y, float* circle_x, float* circle_y, float* circle_r)
 {
-    float lhs[3][3] {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
-    float rhs[3] {0, 0, 0};
-
-    for (int i = 0; i < point_count; i++)
+    if (point_count == 3)
     {
-        float p_x = points_x[indices[i]];
-        float p_y = points_y[indices[i]];
+        int a = indices[0];
+        int b = indices[1];
+        int c = indices[2];
 
-        lhs[0][0] += p_x * p_x;
-        lhs[0][1] += p_x * p_y;
-        lhs[1][1] += p_y * p_y;
-        lhs[0][2] += p_x;
-        lhs[1][2] += p_y;
-        lhs[2][2] += 1;
-
-        rhs[0] += p_x * p_x * p_x + p_x * p_y * p_y;
-        rhs[1] += p_x * p_x * p_y + p_y * p_y * p_y;
-        rhs[2] += p_x * p_x + p_y * p_y;
+        calculate_circle(points_x[a], points_y[a], points_x[b], points_y[b], points_x[c], points_y[c], circle_x, circle_y, circle_r);
     }
+    else
+    {
 
-    Cholesky3x3(lhs, rhs);
+        float lhs[3][3] {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
+        float rhs[3] {0, 0, 0};
 
-    float A=rhs[0], B=rhs[1], C=rhs[2];
+        for (int i = 0; i < point_count; i++)
+        {
+            float p_x = points_x[indices[i]];
+            float p_y = points_y[indices[i]];
 
-    *circle_x = A / 2.0f;
-    *circle_y = B / 2.0f;
-    *circle_r = sqrt(4.0f * C + A * A + B * B) / 2.0f;
+            lhs[0][0] += p_x * p_x;
+            lhs[0][1] += p_x * p_y;
+            lhs[1][1] += p_y * p_y;
+            lhs[0][2] += p_x;
+            lhs[1][2] += p_y;
+            lhs[2][2] += 1;
+
+            rhs[0] += p_x * p_x * p_x + p_x * p_y * p_y;
+            rhs[1] += p_x * p_x * p_y + p_y * p_y * p_y;
+            rhs[2] += p_x * p_x + p_y * p_y;
+        }
+
+        Cholesky3x3(lhs, rhs);
+
+        float A=rhs[0], B=rhs[1], C=rhs[2];
+
+        *circle_x = A / 2.0f;
+        *circle_y = B / 2.0f;
+        *circle_r = sqrt(4.0f * C + A * A + B * B) / 2.0f;
+    }
 }
-
 
 // =========================================================================
 // Kernels...
 
 template<int warp_count>
-__global__ void border_guess(const uint8* g_image, const uint image_width, const uint image_height, float* g_x, float* g_xx)
-{
-    constexpr uint warp_size = 32;
-    constexpr uint thread_count = warp_count * warp_size;
-
-    __shared__ float x_reduction[warp_count];
-    __shared__ float xx_reduction[warp_count];
-    
-    uint thread_index = threadIdx.x + threadIdx.y * blockDim.x;
-    uint warp_index = thread_index >> 5;
-    uint lane_index = thread_index & 31;
-
-    int image_x, image_y;
-
-    switch (blockIdx.x)
-    {
-        case (0):
-        {
-            image_x = threadIdx.x;
-            image_y = threadIdx.y;
-        }
-        break;
-        
-        case (1):
-        {
-            image_x = (image_width - 1) - threadIdx.x;
-            image_y = threadIdx.y;
-        }
-        break;
-        
-        case (2):
-        {
-            image_x = threadIdx.x;
-            image_y = (image_height - 1) - threadIdx.y;
-        }
-        break;
-        
-        case (3):
-        {
-            image_x = (image_width - 1) - threadIdx.x;
-            image_y = (image_height - 1) - threadIdx.y;
-        }
-        break;
-        
-        case (4):
-        {  
-            float stride_x = (image_width - 2 * blockDim.x) / blockDim.x;
-            float stride_y = (image_height - 2 * blockDim.y) / blockDim.y;
-    
-            image_x = (image_width / 2 - stride_x * 0.5 * blockDim.x) + stride_x * (threadIdx.x + 0.5);
-            image_y = (image_height / 2 - stride_y * 0.5 * blockDim.y) + stride_y * (threadIdx.y + 0.5);
-        }
-        break;
-    }
-
-    float x = load_grayscale(g_image, image_x + image_y * image_width, image_width, image_height);
-    float xx = x * x;
-    
-    // warp reduction....
-    #pragma unroll
-    for (int offset = warp_size >> 1; offset > 0; offset >>= 1)
-    {
-        x += __shfl_down_sync(0xffffffff, x, offset);
-        xx += __shfl_down_sync(0xffffffff, xx, offset);
-    }
-
-    if (lane_index == 0)
-    {
-        x_reduction[warp_index] = x;
-        xx_reduction[warp_index] = xx;
-    }
-
-    __syncthreads();
-
-    // block reduction....
-    if (warp_index == 0 && lane_index < warp_count)
-    {
-        x = x_reduction[lane_index];
-        xx = xx_reduction[lane_index];
-
-        #pragma unroll
-        for (int offset = warp_count >> 1 ; offset > 0; offset >>= 1)
-        {
-            x += __shfl_down_sync(0xffffffff, x, offset);
-            xx += __shfl_down_sync(0xffffffff, xx, offset);
-        }
-
-        if (lane_index == 0)
-        {
-            int count = blockDim.x * blockDim.y;
-            g_x[blockIdx.x] = x / count;
-            g_xx[blockIdx.x] = xx / count;
-        }
-    }
-}
-
-template<int warp_count>
-__global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, const uint image_width, const uint image_height, const uint strip_count)
+__global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, float* g_edge_scores, const uint image_width, const uint image_height, const uint strip_count)
 {
     constexpr uint warp_size = 32;
     constexpr uint thread_count = warp_count * warp_size;
     
+    __shared__ float s_image_strip[thread_count * 3];
+    __shared__ float s_cross_warp_operation_buffer[warp_count];
+    __shared__ float s_cross_warp_operation_buffer_2[warp_count];
+
     uint warp_index = threadIdx.x >> 5;
     uint lane_index = threadIdx.x & 31;
 
-    __shared__ float s_image_strip[thread_count * 3];
-    __shared__ uint s_first_edge_reduction_buffer[warp_count];
-    __shared__ uint s_last_edge_reduction_buffer[warp_count];
+    bool flip = blockIdx.x == 1;
 
     // ============================================================
-    // Load strip into shared memory with linear interpolation...
+    // Load strip into shared memory...
 
-    float remainder = threadIdx.x * image_width / (float)thread_count;
-    int image_x = remainder;
-    remainder -= image_x;
+    int image_x = flip ? image_width - 1 - threadIdx.x : threadIdx.x;
 
-    int strip_index = blockIdx.x;
-    int strip_height = 1 + (image_height - 2) / (1.0f + exp(-(strip_index - strip_count / 2.0f + 0.5f)));
+    int strip_index = blockIdx.y;
+    int strip_height = 1 + (image_height - 2) / (1.0f + exp(-(strip_index - strip_count / 2.0f + 0.5f)/(strip_count / 8.0f)));
     
     #pragma unroll
     for (int y = 0; y < 3; y++)
     {
         int image_element_index = image_x + (strip_height + (y - 1)) * image_width;
-
-        float a = load_grayscale(g_image, image_element_index, image_width, image_height);
-        float b = load_grayscale(g_image, image_element_index + 1, image_width, image_height);
-
-        s_image_strip[threadIdx.x + y * thread_count] = (a * (1 - remainder) + b * remainder) / 2;
+        s_image_strip[threadIdx.x + y * thread_count] = load_grayscale(g_image, image_element_index, image_width, image_height);
     }
     
     __syncthreads();
+
+    // float scale_factor = image_width / blockDim.x;
+
+    // int lower_index = scale_factor * threadIdx.x;
+    // int upper_index = lower_index + 1;
+
+    // float t = scale_factor * threadIdx.x - lower_index;
+
+    // int image_lower = flip ? image_width - 1 - lower_index : lower_index;
+    // int image_upper = flip ? image_width - 1 - upper_index : upper_index;
+
+    // int image_x = image_lower;
+
+    // int strip_index = blockIdx.y;
+    // int strip_height = 1 + (image_height - 2) / (1.0f + exp(-(strip_index - strip_count / 2.0f + 0.5f)));
+    
+    // #pragma unroll
+    // for (int y = 0; y < 3; y++)
+    // {
+    //     int image_element_index_lower = image_lower + (strip_height + (y - 1)) * image_width;
+    //     int image_element_index_upper = image_upper + (strip_height + (y - 1)) * image_width;
+        
+    //     float image_element_lower = load_grayscale(g_image, image_element_index_lower, image_width, image_height);
+    //     float image_element_upper = load_grayscale(g_image, image_element_index_upper, image_width, image_height);
+
+    //     s_image_strip[threadIdx.x + y * thread_count] = (1.0 - t) * image_element_lower + t * image_element_upper;
+    // }
+    
+    // __syncthreads();
+
+    
+    // ============================================================
+    // Calculate largest preceeding intensity...
+
+    float max_preceeding_intensity = s_image_strip[threadIdx.x + thread_count];
+
+    #pragma unroll
+    for (int d=1; d < 32; d<<=1) 
+    {
+        float other_intensity = __shfl_up_sync(0xffffffff, max_preceeding_intensity, d);
+
+        if (lane_index >= d && other_intensity > max_preceeding_intensity) 
+        {
+            max_preceeding_intensity = other_intensity;
+        }
+    }
+
+    if (lane_index == warp_size - 1)
+    {
+        s_cross_warp_operation_buffer[warp_index] = max_preceeding_intensity;
+    }
+    
+    __syncthreads();
+
+    if (warp_index == 0)
+    {
+        float warp_max = lane_index < warp_count ? s_cross_warp_operation_buffer[lane_index] : 0;
+
+        #pragma unroll
+        for (int d=1; d < 32; d<<=1) 
+        {
+            float other_max = __shfl_up_sync(0xffffffff, warp_max, d);
+
+            if (lane_index >= d && other_max > warp_max) 
+            {
+                warp_max = other_max;
+            }
+        }
+
+        if (lane_index < warp_count)
+        {
+            s_cross_warp_operation_buffer[lane_index] = warp_max;
+        }
+    }
+
+    __syncthreads();
+
+    if (warp_index > 0)
+    {
+        float other_intensity = s_cross_warp_operation_buffer[warp_index-1];
+        max_preceeding_intensity = other_intensity > max_preceeding_intensity ? other_intensity : max_preceeding_intensity;
+    }
 
     // ============================================================
     // Applying sobel kernel to image patch...
@@ -325,37 +330,55 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     {
         grad = sobel_filter(s_image_strip, threadIdx.x + thread_count, 1, thread_count, &x_grad, &y_grad);
     }
+    
+    // ============================================================
+    // Calculating angle between gradient vector and center vector...
 
-    bool is_edge = grad > EDGE_THRESHOLD;
+    float center_dir_x = (image_width / 2.0f) - (float)image_x;
+    float center_dir_y = (image_height / 2.0f) - (float)strip_height;
+    float center_dir_norm = sqrt(center_dir_x * center_dir_x + center_dir_y * center_dir_y);
+
+    x_grad = flip ? -x_grad : x_grad;
+
+    float dot = grad == 0 ? -1 : (center_dir_x * x_grad + center_dir_y * y_grad) / (center_dir_norm * grad);
+    float angle = RAD2DEG * acos(dot);
 
     // ============================================================
-    // Reduction to find the first and last edge in strip...
+    // Final scoring...
 
-    int first_edge = is_edge ? image_x : INVALID_POINT;
-    int last_edge = is_edge ? image_x : INVALID_POINT;
+    float edge_score = tanh(grad / EDGE_THRESHOLD);
+    float angle_score = 1.0f - tanh(angle / ANGLE_THRESHOLD);
+    float intensity_score = 1.0f - tanh(max_preceeding_intensity / INTENSITY_THRESHOLD);
+
+    float point_score = edge_score * angle_score * intensity_score;
+    
+    // ============================================================
+    // Reduction to find the best edge...
+
+    
+    bool is_valid = threadIdx.x > DISCARD_BORDER && point_score >= EDGE_CONFIDENCE_THRESHOLD;
+
+    int best_edge_x = is_valid ? image_x : INVALID_POINT;
+    float best_edge_score = is_valid ? point_score : 0.0f;
     
     // warp reduction....
     #pragma unroll
     for (int offset = warp_size >> 1; offset > 0; offset >>= 1)
     {
-        int other_first_edge = __shfl_down_sync(0xffffffff, first_edge, offset);
-        int other_last_edge = __shfl_down_sync(0xffffffff, last_edge, offset);
+        int other_edge_x = __shfl_down_sync(0xffffffff, best_edge_x, offset);
+        float other_edge_score = __shfl_down_sync(0xffffffff, best_edge_score, offset);
 
-        if (first_edge == INVALID_POINT || (other_first_edge != INVALID_POINT && other_first_edge < first_edge))
+        if (other_edge_score > best_edge_score)
         {
-            first_edge = other_first_edge;
-        }
-        
-        if (last_edge == INVALID_POINT || (other_last_edge != INVALID_POINT && other_last_edge > last_edge))
-        {
-            last_edge = other_last_edge;
+            best_edge_x = other_edge_x;
+            best_edge_score = other_edge_score;
         }
     }
 
     if (lane_index == 0)
     {
-        s_first_edge_reduction_buffer[warp_index] = first_edge;
-        s_last_edge_reduction_buffer[warp_index] = last_edge;
+        s_cross_warp_operation_buffer[warp_index] = best_edge_x;
+        s_cross_warp_operation_buffer_2[warp_index] = best_edge_score;
     }
 
     __syncthreads();
@@ -363,169 +386,156 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     // block reduction....
     if (warp_index == 0 && lane_index < warp_count)
     {
-        first_edge = s_first_edge_reduction_buffer[lane_index];
-        last_edge = s_last_edge_reduction_buffer[lane_index];
+        best_edge_x = s_cross_warp_operation_buffer[lane_index];
+        best_edge_score = s_cross_warp_operation_buffer_2[lane_index];
 
         #pragma unroll
         for (int offset = warp_count >> 1 ; offset > 0; offset >>= 1)
         {
-            int other_first_edge = __shfl_down_sync(0xffffffff, first_edge, offset);
-            int other_last_edge = __shfl_down_sync(0xffffffff, last_edge, offset);
+            int other_edge_x = __shfl_down_sync(0xffffffff, best_edge_x, offset);
+            float other_edge_score = __shfl_down_sync(0xffffffff, best_edge_score, offset);
 
-            if (first_edge == INVALID_POINT || (other_first_edge != INVALID_POINT && other_first_edge < first_edge))
+            if (other_edge_score > best_edge_score)
             {
-                first_edge = other_first_edge;
-            }
-            
-            if (last_edge == INVALID_POINT || (other_last_edge != INVALID_POINT && other_last_edge > last_edge))
-            {
-                last_edge = other_last_edge;
+                best_edge_x = other_edge_x;
+                best_edge_score = other_edge_score;
             }
         }
 
         if (lane_index == 0)
         {
-            g_edge_x[strip_index] = first_edge;
-            g_edge_y[strip_index] = strip_height;
-
-            g_edge_x[strip_index + strip_count] = last_edge;
-            g_edge_y[strip_index + strip_count] = strip_height;
+            uint point_index = flip ? strip_index : strip_index + strip_count;
+            g_edge_x[point_index] = best_edge_x;
+            g_edge_y[point_index] = strip_height;
+            g_edge_scores[point_index] = best_edge_score;
         }
     }
 }
 
-__global__ void refine_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, float* g_norm_x, float* g_norm_y, const uint image_width, const uint image_height, const uint strip_count)
-{
-    constexpr uint warp_size = 32;
 
-    __shared__ float s_image_strip[warp_size * 3];
+// template<int triangle_size, int triangle_elements>
+// __global__ void insert_corner_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, float* g_edge_scores, const uint point_count, const uint image_height, const uint image_width)
+// {
+//     constexpr uint warp_size = 32;
+
+//     int i, j;
+//     triangle_indices(triangle_size+1, threadIdx.x, i, j);
+
+//     int x = blockIdx.x == 0 ? i : image_width - (i+1);
+//     int y = blockIdx.y == 0 ? j : image_height - (j+1);
+
+//     int image_element_index = x + y * image_width;
+//     float intensity = threadIdx.x < triangle_elements ? load_grayscale(g_image, image_element_index, image_width, image_height) : 0.0f;
+
+//     int point_index = (blockIdx.y == 0 ? threadIdx.x : point_count / 2 - (threadIdx.x+1)) + (blockIdx.x == 0 ? 0 : point_count / 2);
+//     float point_score = threadIdx.x < point_count / 4 ? g_edge_x[point_index] != INVALID_POINT : 0.0f;
     
-    // ============================================================
-    // Get approximate point position...
+//     // Warp reductions....
+//     #pragma unroll
+//     for (int offset = warp_size >> 1; offset > 0; offset >>= 1)
+//     {
+//         intensity += __shfl_down_sync(0xffffffff, intensity, offset);
+//         point_score += __shfl_down_sync(0xffffffff, point_score, offset);
+//     }
 
-    int point_index = blockIdx.x;
+//     intensity /= triangle_elements;
 
-    uint point_x = g_edge_x[point_index];
-    uint point_y = g_edge_y[point_index];
-
-    if (point_x == INVALID_POINT || point_x < DISCARD_BORDER || point_x > image_width - (DISCARD_BORDER+1))
-        return;
-
-    point_x = max(warp_size / 2, min(point_x, image_width - 1 - warp_size / 2));
-
-    // ============================================================
-    // Load patch centered around point position into shared memory...
-
-    int image_x = point_x + (threadIdx.x - warp_size / 2);
-    
-    for (int y = 0; y < 3; y++)
-    {
-        int image_index = image_x + (point_y + (y - 1)) * image_width;
-        s_image_strip[threadIdx.x + y * warp_size] = load_grayscale(g_image, image_index, image_width, image_height);
-    }
-    
-    __syncthreads();
-    
-    // ============================================================
-    // Apply sobel filter...
-
-    float x_grad = 0;
-    float y_grad = 0;
-    float grad = 0;
-
-    if (threadIdx.x > 0 && threadIdx.x < warp_size - 1)
-    {
-        grad = sobel_filter(s_image_strip, threadIdx.x + warp_size, 1, warp_size, &x_grad, &y_grad);
-    }
-
-    float center_dir_x = (image_width / 2.0f) - (float)image_x;
-    float center_dir_y = (image_height / 2.0f) - (float)point_y;
-
-    float center_dir_norm = sqrt(center_dir_x * center_dir_x + center_dir_y * center_dir_y);
-
-    float dot = (center_dir_x * x_grad + center_dir_y * y_grad) / (center_dir_norm * grad);
-
-    bool is_edge = grad > STRICT_EDGE_THRESHOLD &&  dot > cos(ANGLE_THRESHOLD * DEG2RAD);
-
-    x_grad /= grad;
-    y_grad /= grad;
-
-    // ============================================================
-    // Reduction to find the first and last edge in strip...
-
-    bool flip = point_index >= strip_count;
-    int edge = is_edge ? image_x : INVALID_POINT;
-    
-    // warp reduction....
-    #pragma unroll
-    for (int offset = warp_size >> 1; offset > 0; offset >>= 1)
-    {
-        int other_edge = __shfl_down_sync(0xffffffff, edge, offset);
-        float other_x_grad = __shfl_down_sync(0xffffffff, x_grad, offset);
-        float other_y_grad = __shfl_down_sync(0xffffffff, y_grad, offset);
-
-        if (edge == INVALID_POINT || (other_edge != INVALID_POINT && flip == other_edge > edge))
-        {
-            edge = other_edge;
-            x_grad = other_x_grad;
-            y_grad = other_y_grad;
-        }
-    }
-
-    if (threadIdx.x == 0)
-    {
-        g_edge_x[point_index] = edge;
-        g_norm_x[point_index] = x_grad;
-        g_norm_y[point_index] = y_grad;
-    }
-}
+//     if (threadIdx.x == 0 && intensity > INTENSITY_THRESHOLD && point_score == 0.0)
+//     {
+//         int pos = 0;
+//         g_edge_x[point_index] = x + (blockIdx.x == 0 ? -pos : pos);
+//         g_edge_y[point_index] = y + (blockIdx.y == 0 ? -pos : pos);
+//         g_edge_scores[point_index] = 0.15f;
+//     }
+// }
 
 template<int warp_count>
-__global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const float* g_norm_x, const float* g_norm_y, float* g_circle, const uint point_count, const uint image_height, const uint image_width)
+__global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const float* g_edge_scores, float* g_circle, const uint point_count, const uint image_height, const uint image_width)
 {
     __shared__ uint s_edge_x[MAX_POINT_COUNT];
     __shared__ uint s_edge_y[MAX_POINT_COUNT];
-    __shared__ float s_norm_x[MAX_POINT_COUNT];
-    __shared__ float s_norm_y[MAX_POINT_COUNT];
+    __shared__ float s_edge_scores[MAX_POINT_COUNT];
+    __shared__ int s_valid_point_count;
 
     __shared__ float s_score_reduction_buffer[warp_count];
     __shared__ float s_x_reduction_buffer[warp_count];
     __shared__ float s_y_reduction_buffer[warp_count];
     __shared__ float s_r_reduction_buffer[warp_count];
 
+    const uint warp_index = threadIdx.x >> 5;
+    const uint lane_index = threadIdx.x & 31;
+
+    // Loading points to shared memory...
     if (threadIdx.x < point_count)
     {
         s_edge_x[threadIdx.x] = g_edge_x[threadIdx.x];
         s_edge_y[threadIdx.x] = g_edge_y[threadIdx.x];
-        s_norm_x[threadIdx.x] = g_norm_x[threadIdx.x];
-        s_norm_y[threadIdx.x] = g_norm_y[threadIdx.x];
+        s_edge_scores[threadIdx.x] = g_edge_scores[threadIdx.x];
     }
-    
+
+    // Point compaction...
+    bool has_point = threadIdx.x < point_count && s_edge_x[threadIdx.x] != INVALID_POINT;
+    int preceeding_count = has_point;
+
+    if (warp_index == 0)
+    {
+        #pragma unroll
+        for (int d=1; d < 32; d<<=1) 
+        {
+            float other_count = __shfl_up_sync(0xffffffff, preceeding_count, d);
+
+            if (lane_index >= d) 
+            {
+                preceeding_count += other_count;
+            }
+        }
+
+        if (has_point)
+        {
+            s_edge_x[preceeding_count - 1] = s_edge_x[threadIdx.x];
+            s_edge_y[preceeding_count - 1] = s_edge_y[threadIdx.x];
+            s_edge_scores[preceeding_count - 1] = s_edge_scores[threadIdx.x];
+        }
+
+        if (lane_index == 31)
+        {
+            s_valid_point_count = preceeding_count;
+        }
+    }
+
     __syncthreads();
 
-    const uint warp_index = threadIdx.x >> 5;
-    const uint lane_index = threadIdx.x & 31;
+    if (s_valid_point_count < 3)
+    {   
+        if (threadIdx.x < 4)
+        {
+            g_circle[threadIdx.x] = 0.0;
+        }
+
+        return;
+    }
 
     int inlier_count = 3;
     int inliers[MAX_POINT_COUNT];
-    rand_triplet(threadIdx.x, blockDim.x, point_count, inliers);
+    rand_triplet(threadIdx.x * 42342, blockDim.x, s_valid_point_count, inliers);
 
     float circle_x, circle_y, circle_r;
     float circle_score = 0.0f;
 
-    for (int i = 0; i < MAX_RANSAC_ITERATIONS; i++)
+    for (int i = 0; i < RANSAC_ITERATIONS; i++)
     {
         fit_circle(inlier_count, inliers, s_edge_x, s_edge_y, &circle_x, &circle_y, &circle_r);
         
         inlier_count = 0;
         circle_score = 0.0f;
 
-        for (int point_index = 0; point_index < point_count; point_index++)
+        for (int point_index = 0; point_index < s_valid_point_count; point_index++)
         {
             int edge_x = s_edge_x[point_index];
             int edge_y = s_edge_y[point_index];
+            float edge_score = s_edge_scores[point_index];
 
-            if (edge_x != INVALID_POINT && edge_x > DISCARD_BORDER && edge_x < image_width - (DISCARD_BORDER+1))
+            if (edge_x != INVALID_POINT)
             {  
                 float delta_x = circle_x - edge_x;
                 float delta_y = circle_y - edge_y;
@@ -533,14 +543,9 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
                 float delta = sqrt(delta_x * delta_x + delta_y * delta_y);
                 float error = abs(circle_r - delta);
 
-                if (error < INLIER_THRESHOLD)
+                if (error < RANSAC_INLIER_THRESHOLD)
                 {
-                    float norm_x = s_norm_x[point_index];
-                    float norm_y = s_norm_y[point_index];
-
-                    float dot = (delta_x * norm_x + delta_y * norm_y) / delta;
-
-                    circle_score += dot;
+                    circle_score += edge_score;
 
                     inliers[inlier_count] = point_index;
                     inlier_count++;
@@ -626,72 +631,49 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
 // Main function...
 
 #define warp_size 32
-#define find_points_warp_count 16
+#define find_points_warp_count 8
 
-#define border_guess_sample_size 8
-#define border_guess_warp_count WARP_COUNT(border_guess_sample_size * border_guess_sample_size)
+#define corner_triangle_size 7
+#define corner_triangle_threads corner_triangle_size * (corner_triangle_size + 1) / 2
 
-#define ransac_threads 128
+#define ransac_threads 32
 #define ransac_warps WARP_COUNT(ransac_threads)
 
 ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_height, const uint image_width)
 {
     // #########################################################
-    // Guess if border...
-    
-    dim3 border_guess_grid(5);
-    dim3 border_guess_block(border_guess_sample_size, border_guess_sample_size);
-    border_guess<border_guess_warp_count><<<border_guess_grid, border_guess_block>>>(image, image_width, image_height, m_dev_x_sums, m_dev_xx_sums);
-
-    // #########################################################
     // Finding candididate points...
 
-    dim3 find_points_grid(m_height_samples);
+    dim3 find_points_grid(2, m_height_samples);
     dim3 find_points_block(warp_size * find_points_warp_count);
-    find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, image_width, image_height, m_height_samples);
+    find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_edge_scores, image_width, image_height, m_height_samples);
+    
+    // #########################################################
+    // Insert corner candididate points...
 
-    dim3 refine_points_grid(m_point_count);
-    dim3 refine_points_block(warp_size);
-    refine_points<<<refine_points_grid, refine_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, image_width, image_height, m_height_samples);
+    // dim3 insert_corner_points_grid(2, 2);
+    // dim3 insert_corner_points_block(corner_triangle_threads);
+    // insert_corner_points<corner_triangle_size, corner_triangle_threads><<<insert_corner_points_grid, insert_corner_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_edge_scores, m_point_count, image_height, image_width);
 
     // #########################################################
     // Fitting circle to candididate points...
 
     dim3 rand_ransac_grid(1);
     dim3 rand_ransac_block(ransac_threads);
-    rand_ransac<ransac_warps><<<rand_ransac_grid, rand_ransac_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_norm_x, m_dev_norm_y, m_dev_circle, m_point_count, image_height, image_width);
+    rand_ransac<ransac_warps><<<rand_ransac_grid, rand_ransac_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_edge_scores, m_dev_circle, m_point_count, image_height, image_width);
 
     // #########################################################
     // Reading back results...
 
-    cudaMemcpy(m_hst_buffer, m_dev_buffer, m_buffer_size, cudaMemcpyDeviceToHost);
-
-    // #########################################################
-    // Checking border...
-
-    float corner_x_mean = (m_hst_x_sums[0] + m_hst_x_sums[1] + m_hst_x_sums[2] + m_hst_x_sums[3]) / 4;
-    float corner_xx_mean = (m_hst_xx_sums[0] + m_hst_xx_sums[1] + m_hst_xx_sums[2] + m_hst_xx_sums[3]) / 4;
-
-    float middle_x_mean = m_hst_x_sums[4];
-    float middle_xx_mean = m_hst_xx_sums[4];
-
-    float corner_std_squared = corner_xx_mean - corner_x_mean * corner_x_mean;
-    float middle_std_squared = middle_xx_mean - middle_x_mean * middle_x_mean;
-
-    float border_score = tanh(abs(corner_x_mean - middle_x_mean) / sqrt(corner_std_squared + middle_std_squared));
+    cudaMemcpy(m_hst_circle, m_dev_circle, 4 * sizeof(float), cudaMemcpyDeviceToHost);
     
-    // #########################################################
-    // Checking circle...
-
     float circle_x = m_hst_circle[0];
     float circle_y = m_hst_circle[1];
     float circle_r = m_hst_circle[2];
-    float circle_score = m_hst_circle[3];
+    float confidence_score = m_hst_circle[3];
 
     // #########################################################
     // Returning...
-
-    float confidence_score = circle_score * border_score;
 
     if (confidence_score >= CONFIDENCE_THRESHOLD)
     {
@@ -703,65 +685,145 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     }
 }
 
-std::vector<std::vector<float>> ContentAreaInference::get_debug(uint8* image, const uint image_height, const uint image_width)
+template<int warp_count>
+__global__ void find_best_edge(const float* g_score_strips, uint* g_edge_x, uint* g_edge_y, float* g_edge_scores, const uint image_width, const uint image_height, const uint strip_count)
 {
-    infer_area(image, image_height, image_width);
-   
-    // #########################################################
-    // Checking border...
+    __shared__ float s_cross_warp_operation_buffer[warp_count];
+    __shared__ float s_cross_warp_operation_buffer_2[warp_count];
 
-    float corner_x_mean = (m_hst_x_sums[0] + m_hst_x_sums[1] + m_hst_x_sums[2] + m_hst_x_sums[3]) / 4;
-    float corner_xx_mean = (m_hst_xx_sums[0] + m_hst_xx_sums[1] + m_hst_xx_sums[2] + m_hst_xx_sums[3]) / 4;
+    uint warp_index = threadIdx.x >> 5;
+    uint lane_index = threadIdx.x & 31;
 
-    float middle_x_mean = m_hst_x_sums[4];
-    float middle_xx_mean = m_hst_xx_sums[4];
+    bool flip = blockIdx.x == 1;
 
-    float corner_std = sqrt(corner_xx_mean - corner_x_mean * corner_x_mean);
-    float middle_std = sqrt(middle_xx_mean - middle_x_mean * middle_x_mean);
+    // ============================================================
+    // Load strip into shared memory...
 
-    float border_score = tanh(abs(corner_x_mean - middle_x_mean) / (corner_std + middle_std));
+    int image_x = flip ? image_width - 1 - threadIdx.x : threadIdx.x;
+
+    int strip_index = blockIdx.y;
+    int strip_height = 1 + (image_height - 2) / (1.0f + exp(-(strip_index - strip_count / 2.0f + 0.5f)/(strip_count / 8.0f)));
     
-    // #########################################################
-    // Checking circle...
+    float point_score = g_score_strips[image_x + strip_index * image_width];
+   
+    bool is_valid = threadIdx.x > DISCARD_BORDER && point_score >= HYBRID_EDGE_CONFIDENCE_THRESHOLD;
 
+    int best_edge_x = is_valid ? image_x : INVALID_POINT;
+    float best_edge_score = is_valid ? point_score : 0.0f;
+    
+    // warp reduction....
+    #pragma unroll
+    for (int offset = 32 >> 1; offset > 0; offset >>= 1)
+    {
+        int other_edge_x = __shfl_down_sync(0xffffffff, best_edge_x, offset);
+        float other_edge_score = __shfl_down_sync(0xffffffff, best_edge_score, offset);
+
+        if (other_edge_score > best_edge_score)
+        {
+            best_edge_x = other_edge_x;
+            best_edge_score = other_edge_score;
+        }
+    }
+
+    if (lane_index == 0)
+    {
+        s_cross_warp_operation_buffer[warp_index] = best_edge_x;
+        s_cross_warp_operation_buffer_2[warp_index] = best_edge_score;
+    }
+
+    __syncthreads();
+
+    // block reduction....
+    if (warp_index == 0 && lane_index < warp_count)
+    {
+        best_edge_x = s_cross_warp_operation_buffer[lane_index];
+        best_edge_score = s_cross_warp_operation_buffer_2[lane_index];
+
+        #pragma unroll
+        for (int offset = warp_count >> 1 ; offset > 0; offset >>= 1)
+        {
+            int other_edge_x = __shfl_down_sync(0xffffffff, best_edge_x, offset);
+            float other_edge_score = __shfl_down_sync(0xffffffff, best_edge_score, offset);
+
+            if (other_edge_score > best_edge_score)
+            {
+                best_edge_x = other_edge_x;
+                best_edge_score = other_edge_score;
+            }
+        }
+
+        if (lane_index == 0)
+        {
+            uint point_index = flip ? strip_index : strip_index + strip_count;
+            g_edge_x[point_index] = best_edge_x;
+            g_edge_y[point_index] = strip_height;
+            g_edge_scores[point_index] = best_edge_score;
+        }
+    }
+}
+
+
+ContentArea ContentAreaInference::infer_area_hybrid(float* strips, const uint image_height, const uint image_width, const uint strip_count)
+{
+    dim3 find_points_grid(2, strip_count);
+    dim3 find_points_block(32 * find_points_warp_count);
+    find_best_edge<find_points_warp_count><<<find_points_grid, find_points_block>>>(strips, m_dev_edge_x, m_dev_edge_y, m_dev_edge_scores, image_width, image_height, strip_count);
+    
+    dim3 rand_ransac_grid(1);
+    dim3 rand_ransac_block(ransac_threads);
+    rand_ransac<ransac_warps><<<rand_ransac_grid, rand_ransac_block>>>(m_dev_edge_x, m_dev_edge_y, m_dev_edge_scores, m_dev_circle, m_point_count, image_height, image_width);
+
+    // #########################################################
+    // Reading back results...
+
+    cudaMemcpy(m_hst_circle, m_dev_circle, 4 * sizeof(float), cudaMemcpyDeviceToHost);
+    
     float circle_x = m_hst_circle[0];
     float circle_y = m_hst_circle[1];
     float circle_r = m_hst_circle[2];
-    float circle_score = m_hst_circle[3];
+    float confidence_score = m_hst_circle[3];
 
     // #########################################################
     // Returning...
 
-    float confidence_score = circle_score * border_score;
+    if (confidence_score >= HYBRID_CONFIDENCE_THRESHOLD)
+    {
+        return ContentArea(circle_x, circle_y, circle_r);
+    }
+    else
+    {
+        return ContentArea();
+    }
+}
 
-    // #########################################################
-    // Checking border...
+std::vector<std::vector<float>> ContentAreaInference::get_debug()
+{
+    cudaMemcpy(m_hst_buffer, m_dev_buffer, m_buffer_size, cudaMemcpyDeviceToHost);
 
-    std::vector<float> points_x, points_y, norm_x, norm_y, circle, scores;
+    float circle_x = m_hst_circle[0];
+    float circle_y = m_hst_circle[1];
+    float circle_r = m_hst_circle[2];
+    float confidence_score = m_hst_circle[3];
+
+    std::vector<float> points_x, points_y, points_scores, circle;
 
     for (int i = 0; i < m_point_count; i++)
     {
         points_x.push_back(m_hst_edge_x[i]);
         points_y.push_back(m_hst_edge_y[i]);
-        norm_x.push_back(m_hst_norm_x[i]);
-        norm_y.push_back(m_hst_norm_y[i]);
+        points_scores.push_back(m_hst_edge_scores[i]);
     }
 
     circle.push_back(circle_x);
     circle.push_back(circle_y);
     circle.push_back(circle_r);
-
-    scores.push_back(border_score);
-    scores.push_back(circle_score);
-    scores.push_back(confidence_score);
+    circle.push_back(confidence_score);
 
     std::vector<std::vector<float>> result = std::vector<std::vector<float>>();
     result.push_back(points_x);
     result.push_back(points_y);
-    result.push_back(norm_x);
-    result.push_back(norm_y);
+    result.push_back(points_scores);
     result.push_back(circle);
-    result.push_back(scores);
 
     return result;
 }

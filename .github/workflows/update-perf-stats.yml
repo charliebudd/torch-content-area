@@ -39,6 +39,8 @@ jobs:
             python -m pip install numpy pillow torch==${{ inputs.pytorch-version }} -f https://download.pytorch.org/whl/cu$(echo ${{ inputs.cuda-version }} | sed 's/\.//')/torch_stable.html
           fi
 
+          ln -s ../eca-data eca-data
+
           python -V
           pip show torch
         
@@ -46,9 +48,10 @@ jobs:
         run: python setup.py install
 
       - id: run-tests
-        name: Run Tests
+        name: Run Tests and Update README.md
         run: |
-          RESULTS=$(python testing/test_performance.py | grep '-')
+          . ../.venv-${{ inputs.python-version }}-${{ inputs.pytorch-version }}-${{ inputs.cuda-version }}/bin/activate
+          RESULTS=$(sed -r '/^Performance/i\\r' <<< $(python testing/test_performance.py | grep -e '^Performance' -e '^- '))
           RESULTS=$(printf '%s\n' "$RESULTS" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
 
           START="<!-- performance stats start -->"
@@ -63,3 +66,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.head_ref }}
+
+
+
+
