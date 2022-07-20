@@ -1,5 +1,6 @@
 import torch
 import unittest
+from time import sleep
 
 from utils.data import TestDataset, TestDataLoader
 from utils.scoring import content_area_hausdorff, MISS_THRESHOLD, BAD_MISS_THRESHOLD
@@ -69,6 +70,7 @@ class TestPerformance(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         if TEST_LOG != "":
+            sleep(3)
             print(TEST_LOG)
 
 if __name__ == '__main__':
