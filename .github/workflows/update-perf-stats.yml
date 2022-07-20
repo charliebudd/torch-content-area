@@ -50,8 +50,8 @@ jobs:
       - id: run-tests
         name: Run Tests
         run: |
-          . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
-          RESULTS=$(python testing/test_performance.py | grep -e '^Performance' -e '^- ' -B 1)
+          . ../.venv-${{ inputs.python-version }}-${{ inputs.pytorch-version }}-${{ inputs.cuda-version }}/bin/activate
+          RESULTS=$(sed -r '/^Performance/i\\r' <<< $(python output_test.py | grep -e '^Performance' -e '^- '))
           RESULTS=$(printf '%s\n' "$RESULTS" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
 
           START="<!-- performance stats start -->"
