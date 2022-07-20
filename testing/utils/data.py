@@ -3,6 +3,13 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from eca import ECADataset, DataSource, AnnotationType
 
+def meshgrid(tensors):
+    if torch.__version__ >= "1.10":
+        return torch.meshgrid(tensors, indexing="ij")
+    else:
+        return torch.meshgrid(tensors)
+
+
 ########################
 # Datasets...
 
@@ -47,7 +54,7 @@ class DummyDataset(Dataset):
 
         if area != None:
             area_x, area_y, area_r = self.areas[index]
-            coords = torch.stack(torch.meshgrid(torch.arange(0, self.height), torch.arange(0, self.width), indexing="ij"))
+            coords = torch.stack(meshgrid([torch.arange(0, self.height), torch.arange(0, self.width)]))
             center = torch.Tensor([area_y, area_x]).reshape((2, 1, 1))
             mask = torch.where(torch.linalg.norm(abs(coords - center), dim=0) < area_r, 0, 1).unsqueeze(0)
         else:

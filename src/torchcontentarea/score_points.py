@@ -7,6 +7,12 @@ model = None
 norm_means = (0.3441, 0.2251, 0.2203)
 norm_stds = (0.2381, 0.1994, 0.1939)
 
+def meshgrid(tensors):
+    if torch.__version__ >= "1.10":
+        return torch.meshgrid(tensors, indexing="ij")
+    else:
+        return torch.meshgrid(tensors)
+
 def normalise(tensor, mean, std):
     mean = torch.as_tensor(mean, device=tensor.device)
     std = torch.as_tensor(std, device=tensor.device)
@@ -19,7 +25,7 @@ def normalise(tensor, mean, std):
 
 def add_coords(tensor):
     x, y = torch.arange(0, tensor.shape[1], device=tensor.device) / tensor.shape[1], torch.arange(0, tensor.shape[2], device=tensor.device) / tensor.shape[2]
-    xx, yy = torch.meshgrid([x, y])
+    xx, yy = meshgrid([x, y])
     coords = torch.stack([xx, yy], dim=0) - 0.5
     tensor = torch.cat([tensor, coords], dim=0)
     return tensor
