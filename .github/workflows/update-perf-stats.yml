@@ -48,10 +48,10 @@ jobs:
         run: python setup.py install
 
       - id: run-tests
-        name: Run Tests
+        name: Run Tests and Update README.md
         run: |
           . ../.venv-${{ inputs.python-version }}-${{ inputs.pytorch-version }}-${{ inputs.cuda-version }}/bin/activate
-          RESULTS=$(sed -r '/^Performance/i\\r' <<< $(python output_test.py | grep -e '^Performance' -e '^- '))
+          RESULTS=$(sed -r '/^Performance/i\\r' <<< $(python testing/test_performance.py | grep -e '^Performance' -e '^- '))
           RESULTS=$(printf '%s\n' "$RESULTS" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
 
           START="<!-- performance stats start -->"
