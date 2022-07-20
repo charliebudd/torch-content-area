@@ -8,7 +8,8 @@ norm_means = (0.3441, 0.2251, 0.2203)
 norm_stds = (0.2381, 0.1994, 0.1939)
 
 def meshgrid(tensors):
-    if torch.__version__ >= "1.10":
+    major, minor = map(int, torch.__version__.split(".")[:2])
+    if major >= 1 and minor > 9:
         return torch.meshgrid(tensors, indexing="ij")
     else:
         return torch.meshgrid(tensors)
