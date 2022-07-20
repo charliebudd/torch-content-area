@@ -4,7 +4,8 @@ from torch.utils.data import Dataset, DataLoader
 from eca import ECADataset, DataSource, AnnotationType
 
 def meshgrid(tensors):
-    if torch.__version__ >= "1.10":
+    major, minor = map(int, torch.__version__.split(".")[:2])
+    if major >= 1 and minor > 9:
         return torch.meshgrid(tensors, indexing="ij")
     else:
         return torch.meshgrid(tensors)
