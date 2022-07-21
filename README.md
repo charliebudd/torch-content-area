@@ -30,7 +30,6 @@ mask = content_area.draw_mask(image, area)
 ```
 
 ## Performance
-Performance is tested against the [dataset](testing/data) included in this repo...
 <!-- performance stats start -->
 
 Performance Results (handcrafted)...
