@@ -47,12 +47,6 @@ __device__ float sobel_filter(const float* data, const uint index, const uint x_
     return sqrt(*x_grad * *x_grad + *y_grad * *y_grad);
 }
 
-__device__ void triangle_indices(const int n, const int k, int& i, int& j)
-{
-    i = n - 2 - floor(sqrt(-8*k + 4*n*(n-1)-7)/2.0 - 0.5);
-    j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2;
-}
-
 __device__ uint fast_rand(uint& seed)
 { 
     seed = 214013 * seed + 2531011; 
@@ -413,42 +407,6 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
 }
 
 
-// template<int triangle_size, int triangle_elements>
-// __global__ void insert_corner_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, float* g_edge_scores, const uint point_count, const uint image_height, const uint image_width)
-// {
-//     constexpr uint warp_size = 32;
-
-//     int i, j;
-//     triangle_indices(triangle_size+1, threadIdx.x, i, j);
-
-//     int x = blockIdx.x == 0 ? i : image_width - (i+1);
-//     int y = blockIdx.y == 0 ? j : image_height - (j+1);
-
-//     int image_element_index = x + y * image_width;
-//     float intensity = threadIdx.x < triangle_elements ? load_grayscale(g_image, image_element_index, image_width, image_height) : 0.0f;
-
-//     int point_index = (blockIdx.y == 0 ? threadIdx.x : point_count / 2 - (threadIdx.x+1)) + (blockIdx.x == 0 ? 0 : point_count / 2);
-//     float point_score = threadIdx.x < point_count / 4 ? g_edge_x[point_index] != INVALID_POINT : 0.0f;
-    
-//     // Warp reductions....
-//     #pragma unroll
-//     for (int offset = warp_size >> 1; offset > 0; offset >>= 1)
-//     {
-//         intensity += __shfl_down_sync(0xffffffff, intensity, offset);
-//         point_score += __shfl_down_sync(0xffffffff, point_score, offset);
-//     }
-
-//     intensity /= triangle_elements;
-
-//     if (threadIdx.x == 0 && intensity > INTENSITY_THRESHOLD && point_score == 0.0)
-//     {
-//         int pos = 0;
-//         g_edge_x[point_index] = x + (blockIdx.x == 0 ? -pos : pos);
-//         g_edge_y[point_index] = y + (blockIdx.y == 0 ? -pos : pos);
-//         g_edge_scores[point_index] = 0.15f;
-//     }
-// }
-
 template<int warp_count>
 __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const float* g_edge_scores, float* g_circle, const uint point_count, const uint image_height, const uint image_width)
 {
@@ -647,13 +605,6 @@ ContentArea ContentAreaInference::infer_area(uint8* image, const uint image_heig
     dim3 find_points_grid(2, m_height_samples);
     dim3 find_points_block(warp_size * find_points_warp_count);
     find_points<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_edge_scores, image_width, image_height, m_height_samples);
-    
-    // #########################################################
-    // Insert corner candididate points...
-
-    // dim3 insert_corner_points_grid(2, 2);
-    // dim3 insert_corner_points_block(corner_triangle_threads);
-    // insert_corner_points<corner_triangle_size, corner_triangle_threads><<<insert_corner_points_grid, insert_corner_points_block>>>(image, m_dev_edge_x, m_dev_edge_y, m_dev_edge_scores, m_point_count, image_height, image_width);
 
     // #########################################################
     // Fitting circle to candididate points...
