@@ -3,7 +3,7 @@ from enum import IntEnum
 from typing import Sequence, Optional
 
 import __torchcontentareaext as __ext
-from .score_points import get_strip_scores
+from .learned_feature_extraction import get_strip_scores
 
 class InterpolationMode(IntEnum):
     """A tag to specify the type of interpolation when cropping"""
