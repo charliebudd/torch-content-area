@@ -230,36 +230,6 @@ __global__ void find_points(const uint8* g_image, uint* g_edge_x, uint* g_edge_y
     }
     
     __syncthreads();
-
-    // float scale_factor = image_width / blockDim.x;
-
-    // int lower_index = scale_factor * threadIdx.x;
-    // int upper_index = lower_index + 1;
-
-    // float t = scale_factor * threadIdx.x - lower_index;
-
-    // int image_lower = flip ? image_width - 1 - lower_index : lower_index;
-    // int image_upper = flip ? image_width - 1 - upper_index : upper_index;
-
-    // int image_x = image_lower;
-
-    // int strip_index = blockIdx.y;
-    // int strip_height = 1 + (image_height - 2) / (1.0f + exp(-(strip_index - strip_count / 2.0f + 0.5f)));
-    
-    // #pragma unroll
-    // for (int y = 0; y < 3; y++)
-    // {
-    //     int image_element_index_lower = image_lower + (strip_height + (y - 1)) * image_width;
-    //     int image_element_index_upper = image_upper + (strip_height + (y - 1)) * image_width;
-        
-    //     float image_element_lower = load_grayscale(g_image, image_element_index_lower, image_width, image_height);
-    //     float image_element_upper = load_grayscale(g_image, image_element_index_upper, image_width, image_height);
-
-    //     s_image_strip[threadIdx.x + y * thread_count] = (1.0 - t) * image_element_lower + t * image_element_upper;
-    // }
-    
-    // __syncthreads();
-
     
     // ============================================================
     // Calculate largest preceeding intensity...

@@ -5,7 +5,7 @@ ContentAreaInference::ContentAreaInference()
 {
     m_height_samples = 16;
     m_point_count = 2 * m_height_samples;
-    m_buffer_size = 10 * (3 * m_point_count + 4) * sizeof(uint);
+    m_buffer_size = (3 * m_point_count + 4) * sizeof(uint);
 
     cudaMallocHost(&m_hst_buffer, m_buffer_size);
     m_hst_edge_x =      (uint*) m_hst_buffer + 0 * m_point_count;
