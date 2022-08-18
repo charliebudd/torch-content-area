@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from eca import ECADataset, DataSource, AnnotationType
+from ecadataset import ECADataset, DataSource, AnnotationType
 
 def meshgrid(tensors):
     major, minor = map(int, torch.__version__.split(".")[:2])
