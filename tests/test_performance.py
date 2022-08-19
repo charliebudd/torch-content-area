@@ -10,8 +10,12 @@ from torchcontentarea import infer_area_handcrafted, infer_area_learned
 
 TEST_LOG = ""
 
-FUNCTIONS = [infer_area_handcrafted, infer_area_learned]
-MODE_NAMES = ["handcrafted", "learned"]
+TEST_CASES = [
+    ("handcrafted cpu", infer_area_handcrafted, "cpu"),
+    ("learned cpu", infer_area_learned, "cpu"),
+    ("handcrafted cuda", infer_area_handcrafted, "cuda"),
+    ("learned cuda", infer_area_learned, "cuda"),
+]
 
 class TestPerformance(unittest.TestCase):
                             
@@ -22,17 +26,19 @@ class TestPerformance(unittest.TestCase):
 
     def test_performance(self):
 
-        times = [[] for _ in range(len(FUNCTIONS))]
-        errors = [[] for _ in range(len(FUNCTIONS))]
+        times = [[] for _ in range(len(TEST_CASES))]
+        errors = [[] for _ in range(len(TEST_CASES))]
 
         for img, area in self.dataloader:
 
-            img = img.cuda().unsqueeze(0)
+            img = img.unsqueeze(0)
 
-            for i, function in enumerate(FUNCTIONS):
+            for i, (name, method, device) in enumerate(TEST_CASES):
+
+                img = img.to(device=device)
 
                 with Timer() as timer:
-                    infered_area = function(img)
+                    infered_area = method(img)
                 time = timer.time
 
                 infered_area = infered_area[0].cpu().numpy()
@@ -48,7 +54,7 @@ class TestPerformance(unittest.TestCase):
                 times[i].append(time)
 
 
-        for name, times, errors in zip(MODE_NAMES, times, errors):
+        for (name, _, _), times, errors in zip(TEST_CASES, times, errors):
 
             gpu_name = torch.cuda.get_device_name()
             run_in_count = int(len(times) // 100)
