@@ -83,4 +83,4 @@ jobs:
       - name: Run Tests
         run: |
           . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
-          python -m unittest discover -s testing
+          python -m unittest tests

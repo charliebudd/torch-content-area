@@ -7,7 +7,7 @@ with open("README.md") as file:
     long_description = file.read()
 
 ext_src_dir = "src/torchcontentarea/csrc/"
-ext_source_files = glob(ext_src_dir + "*.cpp") + glob(ext_src_dir + "*.cu")
+ext_source_files = glob(ext_src_dir + "**/*.cpp", recursive=True) + glob(ext_src_dir + "**/*.cu", recursive=True)
 
 compile_args = {
     'cxx': ['-g0', '-O3'],
@@ -28,6 +28,6 @@ setup(
     packages=["torchcontentarea"],
     package_dir={"":"src"},
     package_data={'torchcontentarea': ['models/*.pt']},
-    ext_modules=[cpp_extension.CUDAExtension("__torchcontentareaext", ext_source_files, extra_compile_args=compile_args)],
+    ext_modules=[cpp_extension.CUDAExtension("torchcontentareaext", ext_source_files, extra_compile_args=compile_args)],
     cmdclass=versioneer.get_cmdclass({"build_ext": cpp_extension.BuildExtension})
 )

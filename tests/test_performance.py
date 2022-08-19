@@ -2,15 +2,15 @@ import torch
 import unittest
 from time import sleep
 
-from utils.data import TestDataset, TestDataLoader
-from utils.scoring import content_area_hausdorff, MISS_THRESHOLD, BAD_MISS_THRESHOLD
-from utils.profiling import Timer
+from .utils.data import TestDataset, TestDataLoader
+from .utils.scoring import content_area_hausdorff, MISS_THRESHOLD, BAD_MISS_THRESHOLD
+from .utils.profiling import Timer
 
-from torchcontentarea import ContentAreaInference, FeatureExtraction
+from torchcontentarea import infer_area_handcrafted, infer_area_learned
 
 TEST_LOG = ""
 
-MODES = [FeatureExtraction.HANDCRAFTED, FeatureExtraction.LEARNED]
+FUNCTIONS = [infer_area_handcrafted, infer_area_learned]
 MODE_NAMES = ["handcrafted", "learned"]
 
 class TestPerformance(unittest.TestCase):
@@ -19,26 +19,34 @@ class TestPerformance(unittest.TestCase):
         super().__init__(methodName)
         self.dataset = TestDataset()
         self.dataloader = TestDataLoader(self.dataset)
-        self.content_area_inference = ContentAreaInference()
 
     def test_performance(self):
 
-        times = [[], []]
-        errors = [[], []]
+        times = [[] for _ in range(len(FUNCTIONS))]
+        errors = [[] for _ in range(len(FUNCTIONS))]
 
         for img, area in self.dataloader:
 
-            img = img.cuda()
-            
-            for i, mode in enumerate(MODES):
+            img = img.cuda().unsqueeze(0)
+
+            for i, function in enumerate(FUNCTIONS):
 
                 with Timer() as timer:
-                    infered_area = self.content_area_inference.infer_area(img, mode)
+                    infered_area = function(img)
                 time = timer.time
 
-                error, _ = content_area_hausdorff(area, infered_area, img.shape[1:3])
+                infered_area = infered_area[0].cpu().numpy()
+
+                infered_area, confidence = tuple(infered_area[0:3]), infered_area[-1]
+                infered_area = tuple(map(int, infered_area))
+                if confidence < 0.06:
+                    infered_area = None
+
+                error, _ = content_area_hausdorff(area, infered_area, img.shape[2:4])
+
                 errors[i].append(error)
                 times[i].append(time)
+
 
         for name, times, errors in zip(MODE_NAMES, times, errors):
 
