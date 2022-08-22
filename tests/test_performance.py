@@ -1,5 +1,6 @@
 import torch
 import unittest
+import cpuinfo
 from time import sleep
 
 from .utils.data import TestDataset, TestDataLoader
@@ -54,9 +55,8 @@ class TestPerformance(unittest.TestCase):
                 times[i].append(time)
 
 
-        for (name, _, _), times, errors in zip(TEST_CASES, times, errors):
-
-            gpu_name = torch.cuda.get_device_name()
+        for (name, _, device), times, errors in zip(TEST_CASES, times, errors):
+            device_name = torch.cuda.get_device_name() if device == "cuda" else cpuinfo.get_cpu_info()['brand_raw']
             run_in_count = int(len(times) // 100)
             times = times[run_in_count:]
             avg_time = sum(times) / len(times)
@@ -70,7 +70,7 @@ class TestPerformance(unittest.TestCase):
             TEST_LOG += "\n".join([
                 f"\n",
                 f"Performance Results ({name})...",
-                f"- Avg Time ({gpu_name}): {avg_time:.3f}ms",
+                f"- Avg Time ({device_name}): {avg_time:.3f}ms",
                 f"- Avg Error (Hausdorff Distance): {average_error:.3f}",
                 f"- Miss Rate (Error > {MISS_THRESHOLD}): {miss_percentage:.1f}%",
                 f"- Bad Miss Rate (Error > {BAD_MISS_THRESHOLD}): {bad_miss_percentage:.1f}%"

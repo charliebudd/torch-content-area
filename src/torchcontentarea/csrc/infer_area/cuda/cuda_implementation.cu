@@ -15,8 +15,8 @@ torch::Tensor InferAreaHandcrafted::cuda_implementation(torch::Tensor image, uin
     void* temp_buffer;
     cudaMalloc(&temp_buffer, 3 * batch_count * point_count * sizeof(uint));
     uint*  points_x = (uint*) temp_buffer + 0 * batch_count * point_count; 
-    uint*  points_y = (uint*)temp_buffer + 1 * batch_count * point_count; 
-    float* points_s = (float*)temp_buffer + 2 * batch_count * point_count; 
+    uint*  points_y = (uint*) temp_buffer + 1 * batch_count * point_count; 
+    float* points_s = (float*)temp_buffer + 2 * batch_count * point_count;
 
     find_points(image.data_ptr<uint8>(), image_height, image_width, strip_count, points_x, points_y, points_s);
     fit_circle(points_x, points_y, points_s, point_count, image_height, image_width, result.data_ptr<float>());
@@ -38,10 +38,6 @@ torch::Tensor InferAreaLearned::cuda_implementation(torch::Tensor image, uint st
     torch::Tensor strips = torch::empty({batch_count * strip_count, 5, model_patch_size, image_width}, torch::device(image.device()).dtype(torch::kFloat32));
     std::vector<torch::jit::IValue> model_input = {strips};
 
-    //###################################################
-    // make_strips(image.data_ptr<uint8>(), image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
-    // return strips;
-    
     void* temp_buffer;
     cudaMalloc(&temp_buffer, 3 * batch_count * point_count * sizeof(uint));
     uint*  points_x = (uint*) temp_buffer + 0 * batch_count * point_count; 
