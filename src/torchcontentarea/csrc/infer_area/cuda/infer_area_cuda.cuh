@@ -1,13 +1,12 @@
+#pragma once
 #include <cuda_runtime.h>
-
-#define MAX_POINT_COUNT 32
-#define INVALID_POINT -1
+#include "../infer_area.h"
 
 typedef unsigned char uint8;
 
-void find_points(const uint8* image, const uint image_height, const uint image_width, const uint strip_count, uint* points_x, uint* points_y, float* point_score);
+void find_points(const uint8* image, const uint image_height, const uint image_width, const uint strip_count, const FeatureThresholds feature_thresholds, uint* points_x, uint* points_y, float* point_score);
 
 void make_strips(const uint8* image, const uint image_height, const uint image_width, const uint strip_count, const uint strip_width, float* strips);
 void find_points_from_strip_scores(const float* strips, const uint image_width, const uint image_height, const uint strip_count, const uint model_patch_size, uint* points_x, uint* points_y, float* point_score);
 
-void fit_circle(const uint* points_x, const uint* points_y, const float* points_score, const uint point_count, const uint image_height, const uint image_width, float* results);
+void fit_circle(const uint* points_x, const uint* points_y, const float* points_score, const uint point_count, const ConfidenceThresholds confidence_thresholds, const uint image_height, const uint image_width, float* results);

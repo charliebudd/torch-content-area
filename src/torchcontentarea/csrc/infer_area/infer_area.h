@@ -1,3 +1,4 @@
+#pragma once
 #include "../torch_functor.h"
 
 struct FeatureThresholds

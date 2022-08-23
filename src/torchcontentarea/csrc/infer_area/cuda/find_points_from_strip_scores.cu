@@ -1,7 +1,5 @@
 #include "infer_area_cuda.cuh"
 
-#define EDGE_CONFIDENCE_THRESHOLD 0.03
-
 template<int warp_count>
 __global__ void find_best_edge(const float* g_score_strips, uint* g_edge_x, uint* g_edge_y, float* g_edge_scores, const uint image_width, const uint image_height, const uint strip_count, const uint half_patch_size)
 {
@@ -23,10 +21,8 @@ __global__ void find_best_edge(const float* g_score_strips, uint* g_edge_x, uint
     
     float point_score = g_score_strips[image_x + strip_index * image_width];
    
-    bool is_valid = point_score >= EDGE_CONFIDENCE_THRESHOLD;
-
-    int best_edge_x = is_valid ? image_x : INVALID_POINT;
-    float best_edge_score = is_valid ? point_score : 0.0f;
+    int best_edge_x = image_x;
+    float best_edge_score = point_score;
     
     // warp reduction....
     #pragma unroll

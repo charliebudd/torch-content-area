@@ -4,11 +4,6 @@
 #define DEG2RAD 0.01745329251f
 #define RAD2DEG (1.0f / DEG2RAD)
 
-#define INTENSITY_THRESHOLD 25
-#define EDGE_THRESHOLD 20
-#define ANGLE_THRESHOLD 30
-#define EDGE_CONFIDENCE_THRESHOLD 0.03
-
 // =========================================================================
 // General functionality...
 
@@ -34,7 +29,7 @@ __device__ float sobel_filter(const float* data, const uint index, const uint x_
 // Kernels...
 
 template<int warp_count>
-__global__ void find_points_kernel(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, float* g_edge_scores, const uint image_width, const uint image_height, const uint strip_count)
+__global__ void find_points_kernel(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, float* g_edge_scores, const uint image_width, const uint image_height, const uint strip_count, const FeatureThresholds feature_thresholds)
 {
     constexpr uint warp_size = 32;
     constexpr uint thread_count = warp_count * warp_size;
@@ -144,9 +139,9 @@ __global__ void find_points_kernel(const uint8* g_image, uint* g_edge_x, uint* g
     // ============================================================
     // Final scoring...
 
-    float edge_score = tanh(grad / EDGE_THRESHOLD);
-    float angle_score = 1.0f - tanh(angle / ANGLE_THRESHOLD);
-    float intensity_score = 1.0f - tanh(max_preceeding_intensity / INTENSITY_THRESHOLD);
+    float edge_score = tanh(grad / feature_thresholds.edge);
+    float angle_score = 1.0f - tanh(angle / feature_thresholds.angle);
+    float intensity_score = 1.0f - tanh(max_preceeding_intensity / feature_thresholds.intensity);
 
     float point_score = edge_score * angle_score * intensity_score;
     
@@ -154,9 +149,9 @@ __global__ void find_points_kernel(const uint8* g_image, uint* g_edge_x, uint* g
     // Reduction to find the best edge...
 
     
-    bool is_valid = threadIdx.x > DISCARD_BORDER && point_score >= EDGE_CONFIDENCE_THRESHOLD;
+    bool is_valid = threadIdx.x > DISCARD_BORDER;
 
-    int best_edge_x = is_valid ? image_x : INVALID_POINT;
+    int best_edge_x = image_x;
     float best_edge_score = is_valid ? point_score : 0.0f;
     
     // warp reduction....
@@ -217,9 +212,9 @@ __global__ void find_points_kernel(const uint8* g_image, uint* g_edge_x, uint* g
 #define warp_size 32
 #define find_points_warp_count 8
 
-void find_points(const uint8* image, const uint image_height, const uint image_width, const uint strip_count, uint* points_x, uint* points_y, float* point_scores)
+void find_points(const uint8* image, const uint image_height, const uint image_width, const uint strip_count, const FeatureThresholds feature_thresholds, uint* points_x, uint* points_y, float* point_scores)
 {
     dim3 find_points_grid(2, strip_count);
     dim3 find_points_block(warp_size * find_points_warp_count);
-    find_points_kernel<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, points_x, points_y, point_scores, image_width, image_height, strip_count);
+    find_points_kernel<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, points_x, points_y, point_scores, image_width, image_height, strip_count, feature_thresholds);
 }
