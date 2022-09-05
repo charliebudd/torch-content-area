@@ -30,7 +30,7 @@ mask = content_area.draw_mask(image, area)
 ```
 
 ## Performance
-Performance is tested against CholecECA, a subset of the [Endoscopic Content Area (ECA) dataset](https://github.com/charliebudd/eca-dataset)...
+Performance is measured against the CholecECA subset of the [Endoscopic Content Area (ECA) dataset](https://github.com/charliebudd/eca-dataset).
 <!-- performance stats start -->
 
 Performance Results (handcrafted)...
