@@ -1,8 +1,6 @@
 #include <math.h>
 #include "infer_area_cpu.h"
 
-#define EDGE_CONFIDENCE_THRESHOLD 0.03
-
 void find_points_from_strip_scores_cpu(const float* strips, const uint image_height, const uint image_width, const uint strip_count, const uint model_patch_size, uint* points_x, uint* points_y, float* point_score)
 {
     int half_patch_size = model_patch_size / 2;

@@ -2,8 +2,6 @@
 #include <cuda_runtime.h>
 #include "../infer_area.h"
 
-typedef unsigned char uint8;
-
 void find_points(const uint8* image, const uint image_height, const uint image_width, const uint strip_count, const FeatureThresholds feature_thresholds, uint* points_x, uint* points_y, float* point_score);
 
 void make_strips(const uint8* image, const uint image_height, const uint image_width, const uint strip_count, const uint strip_width, float* strips);

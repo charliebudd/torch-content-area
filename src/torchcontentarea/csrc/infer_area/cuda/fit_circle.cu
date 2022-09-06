@@ -1,12 +1,5 @@
 #include "infer_area_cuda.cuh"
 
-#define MAX_CENTER_DIST 0.2 // * image width
-#define MIN_RADIUS 0.2 // * image width
-#define MAX_RADIUS 0.8 // * image width
-
-#define RANSAC_INLIER_THRESHOLD 3
-#define RANSAC_ITERATIONS 3
-
 // =========================================================================
 // General functionality...
 
@@ -262,8 +255,8 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
     }
 
     int inlier_count = 3;
-    int inliers[64];
-    rand_triplet(threadIdx.x * 42342, blockDim.x, s_valid_point_count, inliers);
+    int inliers[MAX_POINT_COUNT];
+    rand_triplet(threadIdx.x * 42342, RANSAC_ATTEMPTS, s_valid_point_count, inliers);
 
     float circle_x, circle_y, circle_r;
     float circle_score = 0.0f;
@@ -373,8 +366,8 @@ __global__ void rand_ransac(const uint* g_edge_x, const uint* g_edge_y, const fl
 // =========================================================================
 // Main function...
 
-#define ransac_threads 64
-#define ransac_warps 2
+#define ransac_threads RANSAC_ATTEMPTS
+#define ransac_warps (1 + (RANSAC_ATTEMPTS - 1) / 32)
 
 void fit_circle(const uint* points_x, const uint* points_y, const float* points_score, const uint point_count, const ConfidenceThresholds confidence_thresholds, const uint image_height, const uint image_width, float* results)
 {

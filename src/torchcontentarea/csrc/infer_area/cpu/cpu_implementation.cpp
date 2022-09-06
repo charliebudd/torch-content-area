@@ -16,8 +16,8 @@ torch::Tensor InferAreaHandcrafted::cpu_implementation(torch::Tensor image, uint
     uint*  points_y = (uint*) temp_buffer + 1 * batch_count * point_count;
     float* points_s = (float*)temp_buffer + 2 * batch_count * point_count;
 
-    find_points_cpu(image.data_ptr<uint8>(), image_height, image_width, strip_count, points_x, points_y, points_s);
-    fit_circle_cpu(points_x, points_y, points_s, point_count, image_height, image_width, result.data_ptr<float>());
+    find_points_cpu(image.data_ptr<uint8>(), image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
+    fit_circle_cpu(points_x, points_y, points_s, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
 
     delete[] temp_buffer;
 
@@ -47,7 +47,7 @@ torch::Tensor InferAreaLearned::cpu_implementation(torch::Tensor image, uint str
 
     find_points_from_strip_scores_cpu(strip_scores.data_ptr<float>(), image_height, image_width, strip_count, model_patch_size, points_x, points_y, points_s);
     
-    fit_circle_cpu(points_x, points_y, points_s, point_count, image_height, image_width, result.data_ptr<float>());
+    fit_circle_cpu(points_x, points_y, points_s, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
 
     delete[] temp_buffer;
 

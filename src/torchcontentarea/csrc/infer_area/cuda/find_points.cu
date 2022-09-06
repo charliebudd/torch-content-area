@@ -1,9 +1,5 @@
 #include "infer_area_cuda.cuh"
 
-#define DISCARD_BORDER 3
-#define DEG2RAD 0.01745329251f
-#define RAD2DEG (1.0f / DEG2RAD)
-
 // =========================================================================
 // General functionality...
 
