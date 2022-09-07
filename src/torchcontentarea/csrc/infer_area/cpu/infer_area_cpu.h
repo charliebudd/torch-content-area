@@ -1,3 +1,4 @@
+#pragma once
 #include "../infer_area.h"
 
 void find_points_cpu(const uint8* image, const uint image_height, const uint image_width, const uint strip_count, FeatureThresholds feature_thresholds, uint* points_x, uint* points_y, float* point_score);

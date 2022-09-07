@@ -3,14 +3,14 @@
 
 void make_strips_cpu(const uint8* image, const uint image_height, const uint image_width, const uint strip_count, const uint strip_width, float* strips)
 {
-    for (int strip_index = 0; strip_index < strip_count; ++strip_index)
+    for (uint strip_index = 0; strip_index < strip_count; ++strip_index)
     {
         int strip_height = 1 + (image_height - 2) / (1.0f + std::exp(-(strip_index - strip_count / 2.0f + 0.5f)/(strip_count / 8.0f)));
         int strip_offset = strip_index * 5 * image_width * strip_width;
 
-        for (int image_x = 0; image_x < image_width; ++image_x)
+        for (uint image_x = 0; image_x < image_width; ++image_x)
         {
-            for (int strip_y = 0; strip_y < strip_width; ++strip_y)
+            for (uint strip_y = 0; strip_y < strip_width; ++strip_y)
             {
                 int image_y = strip_height + strip_y - (strip_width - 1) / 2;
 

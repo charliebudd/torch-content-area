@@ -4,14 +4,14 @@
 // =========================================================================
 // General functionality...
 
-float load_grayscale(const uint8* data, const uint index, const uint color_stride)
+float load_grayscale_cpu(const uint8* data, const uint index, const uint color_stride)
 {
     return 0.2126f * data[index + 0 * color_stride] + 0.7152f * data[index + 1 * color_stride] + 0.0722f * data[index + 2 * color_stride];
 }
 
 float load_sobel_strip(const uint8* data, const uint index, const uint spatial_stride, const uint color_stride)
 {
-    return  0.25 * load_grayscale(data, index - spatial_stride, color_stride) + 0.5 * load_grayscale(data, index, color_stride) + 0.25 * load_grayscale(data, index + spatial_stride, color_stride);
+    return  0.25 * load_grayscale_cpu(data, index - spatial_stride, color_stride) + 0.5 * load_grayscale_cpu(data, index, color_stride) + 0.25 * load_grayscale_cpu(data, index + spatial_stride, color_stride);
 }
 
 // =========================================================================
@@ -19,9 +19,7 @@ float load_sobel_strip(const uint8* data, const uint index, const uint spatial_s
 
 void find_points_cpu(const uint8* image, const uint image_height, const uint image_width, const uint strip_count, FeatureThresholds feature_thresholds, uint* points_x, uint* points_y, float* point_scores)
 {
-    float image_patch[3][3];
-
-    for (int strip_index = 0; strip_index < strip_count; ++strip_index)
+    for (uint strip_index = 0; strip_index < strip_count; ++strip_index)
     {
         int image_y = 1 + (image_height - 2) / (1.0f + std::exp(-(strip_index - strip_count / 2.0f + 0.5f)/(strip_count / 8.0f)));
 
@@ -31,13 +29,13 @@ void find_points_cpu(const uint8* image, const uint image_height, const uint ima
 
             float max_preceeding_intensity = 0.0f;
             float best_score = 0.0f;
-            int best_index = 0;
+            uint best_index = 0;
 
-            for (int x = 0; x < image_width / 2; ++x)
+            for (uint x = 1; x < image_width / 2; ++x)
             {
                 int image_x = flip ? image_width - 1 - x : x;
 
-                float intensity = load_grayscale(image, image_x + image_y * image_width, image_width * image_height);
+                float intensity = load_grayscale_cpu(image, image_x + image_y * image_width, image_width * image_height);
                 max_preceeding_intensity = max_preceeding_intensity < intensity ? intensity : max_preceeding_intensity;
 
                 float left  = load_sobel_strip(image, (image_x - 1) + image_y * image_width, image_width, image_width * image_height);

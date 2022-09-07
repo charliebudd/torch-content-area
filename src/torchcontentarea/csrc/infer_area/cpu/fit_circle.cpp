@@ -164,7 +164,7 @@ void fit_circle_cpu(uint* points_x, uint* points_y, float* points_score, const u
 {
     // Point compaction...
     int real_point_count = 0;
-    for (int i = 0; i < point_count; ++i)
+    for (uint i = 0; i < point_count; ++i)
     {
         if (points_score[i] > confidence_thresholds.edge)
         {

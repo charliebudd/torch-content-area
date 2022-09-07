@@ -6,7 +6,7 @@ void find_points_from_strip_scores_cpu(const float* strips, const uint image_hei
     int half_patch_size = model_patch_size / 2;
     int strip_width = image_width - 2 * half_patch_size;
 
-    for (int strip_index = 0; strip_index < strip_count; ++strip_index)
+    for (uint strip_index = 0; strip_index < strip_count; ++strip_index)
     {
         int image_y = 1 + (image_height - 2) / (1.0f + std::exp(-(strip_index - strip_count / 2.0f + 0.5f) / (strip_count / 8.0f)));
 

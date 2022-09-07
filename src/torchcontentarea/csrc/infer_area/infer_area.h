@@ -15,6 +15,8 @@
 typedef unsigned int uint;
 typedef unsigned char uint8;
 
+void check_image_tensor(torch::Tensor image);
+
 struct FeatureThresholds
 {
     float edge;

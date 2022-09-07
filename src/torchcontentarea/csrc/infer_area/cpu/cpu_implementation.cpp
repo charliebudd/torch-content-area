@@ -1,8 +1,9 @@
-#include "../infer_area.h"
 #include "infer_area_cpu.h"
 
 torch::Tensor InferAreaHandcrafted::cpu_implementation(torch::Tensor image, uint strip_count, FeatureThresholds feature_thresholds, ConfidenceThresholds confidence_thresholds)
 {
+    check_image_tensor(image);
+
     uint batch_count = image.size(0);
     uint image_channels = image.size(1);
     uint image_height = image.size(2);
@@ -19,13 +20,15 @@ torch::Tensor InferAreaHandcrafted::cpu_implementation(torch::Tensor image, uint
     find_points_cpu(image.data_ptr<uint8>(), image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
     fit_circle_cpu(points_x, points_y, points_s, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
 
-    delete[] temp_buffer;
+    free(temp_buffer);
 
     return result;
 }
 
 torch::Tensor InferAreaLearned::cpu_implementation(torch::Tensor image, uint strip_count, torch::jit::Module model, uint model_patch_size, ConfidenceThresholds confidence_thresholds)
 {
+    check_image_tensor(image);
+
     uint batch_count = image.size(0);
     uint image_channels = image.size(1);
     uint image_height = image.size(2);
@@ -49,7 +52,7 @@ torch::Tensor InferAreaLearned::cpu_implementation(torch::Tensor image, uint str
     
     fit_circle_cpu(points_x, points_y, points_s, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
 
-    delete[] temp_buffer;
+    free(temp_buffer);
 
     return result;
 }

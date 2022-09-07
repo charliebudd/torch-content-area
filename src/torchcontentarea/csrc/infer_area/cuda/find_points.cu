@@ -24,15 +24,17 @@ __device__ float sobel_filter(const float* data, const uint index, const uint x_
 // =========================================================================
 // Kernels...
 
-template<int warp_count>
 __global__ void find_points_kernel(const uint8* g_image, uint* g_edge_x, uint* g_edge_y, float* g_edge_scores, const uint image_width, const uint image_height, const uint strip_count, const FeatureThresholds feature_thresholds)
 {
     constexpr uint warp_size = 32;
-    constexpr uint thread_count = warp_count * warp_size;
-    
-    __shared__ float s_image_strip[thread_count * 3];
-    __shared__ float s_cross_warp_operation_buffer[warp_count];
-    __shared__ float s_cross_warp_operation_buffer_2[warp_count];
+
+    int thread_count = blockDim.x;
+    int warp_count = 1 + (thread_count - 1) / warp_size;
+
+    extern __shared__ uint s_shared_buffer[];
+    float* s_image_strip = (float*)s_shared_buffer;
+    uint* s_cross_warp_operation_buffer = s_shared_buffer + 3 * thread_count;
+    float* s_cross_warp_operation_buffer_2 = (float*)(s_shared_buffer + 3 * thread_count + warp_count);
 
     uint warp_index = threadIdx.x >> 5;
     uint lane_index = threadIdx.x & 31;
@@ -123,10 +125,10 @@ __global__ void find_points_kernel(const uint8* g_image, uint* g_edge_x, uint* g
     // ============================================================
     // Calculating angle between gradient vector and center vector...
 
-    float center_dir_x = (image_width / 2.0f) - (float)image_x;
-    float center_dir_y = (image_height / 2.0f) - (float)strip_height;
+    float center_dir_x = (0.5f * image_width) - (float)image_x;
+    float center_dir_y = (0.5f * image_height) - (float)strip_height;
     float center_dir_norm = sqrt(center_dir_x * center_dir_x + center_dir_y * center_dir_y);
-
+ 
     x_grad = flip ? -x_grad : x_grad;
 
     float dot = grad == 0 ? -1 : (center_dir_x * x_grad + center_dir_y * y_grad) / (center_dir_norm * grad);
@@ -140,15 +142,12 @@ __global__ void find_points_kernel(const uint8* g_image, uint* g_edge_x, uint* g
     float intensity_score = 1.0f - tanh(max_preceeding_intensity / feature_thresholds.intensity);
 
     float point_score = edge_score * angle_score * intensity_score;
-    
+
     // ============================================================
     // Reduction to find the best edge...
 
-    
-    bool is_valid = threadIdx.x > DISCARD_BORDER;
-
     int best_edge_x = image_x;
-    float best_edge_score = is_valid ? point_score : 0.0f;
+    float best_edge_score = point_score;
     
     // warp reduction....
     #pragma unroll
@@ -194,6 +193,12 @@ __global__ void find_points_kernel(const uint8* g_image, uint* g_edge_x, uint* g
         if (lane_index == 0)
         {
             uint point_index = flip ? strip_index : strip_index + strip_count;
+            
+            if (best_edge_x < DISCARD_BORDER || best_edge_x >= image_width - DISCARD_BORDER)
+            {
+                best_edge_score = 0.0f;
+            }
+
             g_edge_x[point_index] = best_edge_x;
             g_edge_y[point_index] = strip_height;
             g_edge_scores[point_index] = best_edge_score;
@@ -201,16 +206,16 @@ __global__ void find_points_kernel(const uint8* g_image, uint* g_edge_x, uint* g
     }
 }
 
-
 // =========================================================================
 // Main function...
 
-#define warp_size 32
-#define find_points_warp_count 8
-
 void find_points(const uint8* image, const uint image_height, const uint image_width, const uint strip_count, const FeatureThresholds feature_thresholds, uint* points_x, uint* points_y, float* point_scores)
 {
+    int half_width = image_width / 2;
+    int warps = 1 + (half_width - 1) / 32;
+    int threads = warps * 32;
+
     dim3 find_points_grid(2, strip_count);
-    dim3 find_points_block(warp_size * find_points_warp_count);
-    find_points_kernel<find_points_warp_count><<<find_points_grid, find_points_block>>>(image, points_x, points_y, point_scores, image_width, image_height, strip_count, feature_thresholds);
+    dim3 find_points_block(threads);
+    find_points_kernel<<<find_points_grid, find_points_block, (3 * threads + 2 * warps) * sizeof(int)>>>(image, points_x, points_y, point_scores, image_width, image_height, strip_count, feature_thresholds);
 }
