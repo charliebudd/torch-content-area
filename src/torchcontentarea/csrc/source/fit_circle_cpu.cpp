@@ -164,7 +164,7 @@ namespace cpu
         int* compacted_points = (int*)malloc(3 * point_count * sizeof(int));
         int* compacted_points_x = compacted_points + 0 * point_count;
         int* compacted_points_y = compacted_points + 1 * point_count;
-        int* compacted_points_s = compacted_points + 2 * point_count;
+        float* compacted_points_s = (float*)compacted_points + 2 * point_count;
 
         // Point compaction...
         int real_point_count = 0;
