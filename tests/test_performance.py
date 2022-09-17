@@ -1,17 +1,23 @@
 import torch
+import numpy as np
 import unittest
+import cpuinfo
 from time import sleep
 
-from utils.data import TestDataset, TestDataLoader
-from utils.scoring import content_area_hausdorff, MISS_THRESHOLD, BAD_MISS_THRESHOLD
-from utils.profiling import Timer
+from .utils.data import TestDataset, TestDataLoader
+from .utils.scoring import content_area_hausdorff, MISS_THRESHOLD, BAD_MISS_THRESHOLD
+from .utils.profiling import Timer
 
-from torchcontentarea import ContentAreaInference, FeatureExtraction
+from torchcontentarea import estimate_area_handcrafted, estimate_area_learned
 
 TEST_LOG = ""
 
-MODES = [FeatureExtraction.HANDCRAFTED, FeatureExtraction.LEARNED]
-MODE_NAMES = ["handcrafted", "learned"]
+TEST_CASES = [
+    ("handcrafted cpu", estimate_area_handcrafted, "cpu"),
+    ("learned cpu", estimate_area_learned, "cpu"),
+    ("handcrafted cuda", estimate_area_handcrafted, "cuda"),
+    ("learned cuda", estimate_area_learned, "cuda"),
+]
 
 class TestPerformance(unittest.TestCase):
                             
@@ -19,33 +25,43 @@ class TestPerformance(unittest.TestCase):
         super().__init__(methodName)
         self.dataset = TestDataset()
         self.dataloader = TestDataLoader(self.dataset)
-        self.content_area_inference = ContentAreaInference()
 
     def test_performance(self):
 
-        times = [[], []]
-        errors = [[], []]
+        times = [[] for _ in range(len(TEST_CASES))]
+        errors = [[] for _ in range(len(TEST_CASES))]
 
         for img, area in self.dataloader:
 
-            img = img.cuda()
-            
-            for i, mode in enumerate(MODES):
+            img = img.unsqueeze(0)
+
+            for i, (name, method, device) in enumerate(TEST_CASES):
+
+                img = img.to(device=device)
 
                 with Timer() as timer:
-                    infered_area = self.content_area_inference.infer_area(img, mode)
+                    infered_area = method(img)
                 time = timer.time
 
-                error, _ = content_area_hausdorff(area, infered_area, img.shape[1:3])
+                infered_area = infered_area[0].cpu().numpy()
+
+                infered_area, confidence = tuple(infered_area[0:3]), infered_area[-1]
+                infered_area = tuple(map(int, infered_area))
+                if confidence < 0.06:
+                    infered_area = None
+
+                error, _ = content_area_hausdorff(area, infered_area, img.shape[2:4])
+
                 errors[i].append(error)
                 times[i].append(time)
 
-        for name, times, errors in zip(MODE_NAMES, times, errors):
 
-            gpu_name = torch.cuda.get_device_name()
+        for (name, _, device), times, errors in zip(TEST_CASES, times, errors):
+            device_name = torch.cuda.get_device_name() if device == "cuda" else cpuinfo.get_cpu_info()['brand_raw']
             run_in_count = int(len(times) // 100)
             times = times[run_in_count:]
             avg_time = sum(times) / len(times)
+            std_time = np.std(times)
 
             sample_count = len(self.dataset)
             average_error = sum(errors) / sample_count
@@ -56,7 +72,7 @@ class TestPerformance(unittest.TestCase):
             TEST_LOG += "\n".join([
                 f"\n",
                 f"Performance Results ({name})...",
-                f"- Avg Time ({gpu_name}): {avg_time:.3f}ms",
+                f"- Avg Time ({device_name}): {avg_time:.3f} ± {std_time:.3f}ms",
                 f"- Avg Error (Hausdorff Distance): {average_error:.3f}",
                 f"- Miss Rate (Error > {MISS_THRESHOLD}): {miss_percentage:.1f}%",
                 f"- Bad Miss Rate (Error > {BAD_MISS_THRESHOLD}): {bad_miss_percentage:.1f}%"
