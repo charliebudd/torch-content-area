@@ -48,5 +48,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("estimate_area_learned", &estimate_area_learned);
     m.def("get_points_handcrafted", &get_points_handcrafted);
     m.def("get_points_learned", &get_points_learned);
-    m.def("fit_circle", &fit_circle);
+    m.def("fit_area", &fit_area);
 }

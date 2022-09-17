@@ -77,10 +77,10 @@ namespace cpu
                     best_score = 0.0f;
                 }
 
-                points_x[2 * strip_index + point_index] = best_index;
-                points_y[2 * strip_index + point_index] = image_y;
-                point_scores[2 * strip_index + point_index] = best_score;
+                points_x[strip_index + point_index * strip_count] = best_index;
+                points_y[strip_index + point_index * strip_count] = image_y;
+                point_scores[strip_index + point_index * strip_count] = best_score;
             }
         }
-    } 
+    }
 } 

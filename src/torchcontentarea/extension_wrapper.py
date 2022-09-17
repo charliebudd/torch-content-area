@@ -50,8 +50,8 @@ def get_points_learned(image: torch.Tensor, strip_count: int=16, model: Optional
     return ext.get_points_learned(image, strip_count, model._c, model_patch_size)
 
 
-def fit_circle(points: torch.Tensor, confidence_thresholds: Sequence[float]=(0.03, 0.06)) -> torch.Tensor:
+def fit_area(points: torch.Tensor, image_size: Sequence[int], confidence_thresholds: Sequence[float]=(0.03, 0.06)) -> torch.Tensor:
     """
     Finds candidate edge points and corresponding scores in the given image(s) using handcrafted feature extraction.
     """
-    return ext.fit_circle(points, confidence_thresholds)
+    return ext.fit_area(points, image_size, confidence_thresholds)

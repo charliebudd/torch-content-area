@@ -161,9 +161,10 @@ namespace cpu
 
     void fit_circle(const int* points_x, const int* points_y, const float* points_score, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width, float* results)
     {
-        int* compacted_points_x = new int[point_count];
-        int* compacted_points_y = new int[point_count];
-        int* compacted_points_s = new int[point_count];
+        int* compacted_points = (int*)malloc(3 * point_count * sizeof(int));
+        int* compacted_points_x = compacted_points + 0 * point_count;
+        int* compacted_points_y = compacted_points + 1 * point_count;
+        int* compacted_points_s = compacted_points + 2 * point_count;
 
         // Point compaction...
         int real_point_count = 0;
@@ -177,7 +178,7 @@ namespace cpu
                 real_point_count += 1;
             }
         }
-        
+    
         results[0] = 0.0f;
         results[1] = 0.0f;
         results[2] = 0.0f;
@@ -240,5 +241,7 @@ namespace cpu
                 results[3] = circle_score;
             }
         }
+        
+        free(compacted_points);
     }
 }

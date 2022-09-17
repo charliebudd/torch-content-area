@@ -211,7 +211,7 @@ torch::Tensor get_points_learned(torch::Tensor image, int strip_count, torch::ji
     return result;
 }
 
-torch::Tensor fit_circle(torch::Tensor points, py::tuple image_size, ConfidenceThresholds confidence_thresholds)
+torch::Tensor fit_area(torch::Tensor points, py::tuple image_size, ConfidenceThresholds confidence_thresholds)
 {
     check_points(points);
 
