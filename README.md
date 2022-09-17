@@ -12,21 +12,19 @@ pip install torchcontentarea
 ```
 
 ## Usage
-First, import the `ContentAreaInference` class and create an instance...
-```
-from torchcontentarea import ContentAreaInference
+```python
+from torchvision.io import read_image
+from torchcontentarea import estimate_area, get_points, fit_area
 
-content_area = ContentAreaInference()
-```
-Then, either infer the content area mask directly...
-```
-mask = content_area.infer_mask(image)
-```
-Or return a description of the content area which may be adjusted before drawing the mask...
-```
-area = content_area.infer_area(image)
-area = edit_area(area)
-mask = content_area.draw_mask(image, area)
+# Image in NCHW format, byte/uint8 type is expected
+image = read_image("my_image.png").unsqueeze(0)
+
+# Either directly estimate area from image...
+area = estimate_area(image, strip_count=16)
+
+# ...or get the set of points and then fit the area.
+points = get_points(image, strip_count=16)
+area = fit_area(points, image.shape[2:4])
 ```
 
 ## Performance
