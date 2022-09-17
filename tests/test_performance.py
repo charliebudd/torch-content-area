@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import unittest
 import cpuinfo
 from time import sleep
@@ -7,15 +8,15 @@ from .utils.data import TestDataset, TestDataLoader
 from .utils.scoring import content_area_hausdorff, MISS_THRESHOLD, BAD_MISS_THRESHOLD
 from .utils.profiling import Timer
 
-from torchcontentarea import infer_area_handcrafted, infer_area_learned
+from torchcontentarea import estimate_area_handcrafted, estimate_area_learned
 
 TEST_LOG = ""
 
 TEST_CASES = [
-    ("handcrafted cpu", infer_area_handcrafted, "cpu"),
-    ("learned cpu", infer_area_learned, "cpu"),
-    ("handcrafted cuda", infer_area_handcrafted, "cuda"),
-    ("learned cuda", infer_area_learned, "cuda"),
+    ("handcrafted cpu", estimate_area_handcrafted, "cpu"),
+    ("learned cpu", estimate_area_learned, "cpu"),
+    ("handcrafted cuda", estimate_area_handcrafted, "cuda"),
+    ("learned cuda", estimate_area_learned, "cuda"),
 ]
 
 class TestPerformance(unittest.TestCase):
@@ -60,6 +61,7 @@ class TestPerformance(unittest.TestCase):
             run_in_count = int(len(times) // 100)
             times = times[run_in_count:]
             avg_time = sum(times) / len(times)
+            std_time = np.std(times)
 
             sample_count = len(self.dataset)
             average_error = sum(errors) / sample_count
@@ -70,7 +72,7 @@ class TestPerformance(unittest.TestCase):
             TEST_LOG += "\n".join([
                 f"\n",
                 f"Performance Results ({name})...",
-                f"- Avg Time ({device_name}): {avg_time:.3f}ms",
+                f"- Avg Time ({device_name}): {avg_time:.3f} ± {std_time:.3f}ms",
                 f"- Avg Error (Hausdorff Distance): {average_error:.3f}",
                 f"- Miss Rate (Error > {MISS_THRESHOLD}): {miss_percentage:.1f}%",
                 f"- Bad Miss Rate (Error > {BAD_MISS_THRESHOLD}): {bad_miss_percentage:.1f}%"

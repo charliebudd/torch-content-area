@@ -1,5 +1,5 @@
 #include <torch/extension.h>
-#include "infer_area/infer_area.h"
+#include "implementation.hpp"
 
 template<>
 struct py::detail::type_caster<FeatureThresholds> 
@@ -44,6 +44,9 @@ struct py::detail::type_caster<ConfidenceThresholds>
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) 
 {
-    m.def("infer_area_handcrafted", &InferAreaHandcrafted::invoke);
-    m.def("infer_area_learned", &InferAreaLearned::invoke);
+    m.def("estimate_area_handcrafted", &estimate_area_handcrafted);
+    m.def("estimate_area_learned", &estimate_area_learned);
+    m.def("get_points_handcrafted", &get_points_handcrafted);
+    m.def("get_points_learned", &get_points_learned);
+    m.def("fit_circle", &fit_circle);
 }
