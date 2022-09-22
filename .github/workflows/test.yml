@@ -46,26 +46,25 @@ jobs:
       - name: Install Test Requirements
         run: |
           ENV=../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}
-          if [ -d "$ENV" ]; then
-            . $ENV/bin/activate
-          else
+          if [ ! -d "$ENV" ]; then
             python -m venv $ENV
-            . $ENV/bin/activate
-            python -m pip install -U --force-reinstall pip
-            python -m pip install numpy pillow torch==${{ matrix.pytorch }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda }} | sed 's/\.//')/torch_stable.html
           fi
+          . $ENV/bin/activate
+
+          python -m pip install -U --force-reinstall pip
+          python -m pip install numpy py-cpuinfo ecadataset
+          python -m pip install torch==${{ matrix.pytorch }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda }} | sed 's/\.//')/torch_stable.html
           
           ln -s ../eca-data eca-data
 
           python -V
           pip show torch
-          pip show ecadataset
         
       - name: Install torchcontentarea From PyPI Index
         if: ${{ !inputs.local-wheels }}
         run: |
           . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
-          python -m pip install --force-reinstall torchcontentarea -i ${{ inputs.wheel-location }}
+          python -m pip install --force-reinstall --no-deps torchcontentarea -i ${{ inputs.wheel-location }}
         
       - name: Download Cached Wheels
         if: ${{ inputs.local-wheels }}
@@ -78,9 +77,9 @@ jobs:
         if: ${{ inputs.local-wheels }}
         run: |
           . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
-          python -m pip install --force-reinstall ${{ inputs.wheel-location }}/torchcontentarea*cp$(echo ${{ matrix.python }} | sed 's/\.//')*.whl
+          python -m pip install --force-reinstall --no-deps ${{ inputs.wheel-location }}/torchcontentarea*cp$(echo ${{ matrix.python }} | sed 's/\.//')*.whl
 
       - name: Run Tests
         run: |
           . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
-          python -m unittest discover -s testing
+          python -m unittest tests
