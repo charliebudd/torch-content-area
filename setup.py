@@ -24,10 +24,10 @@ setup(
     author_email="charles.budd@kcl.ac.uk",
     url="https://github.com/charliebudd/torch-content-area",
     license="MIT",
-    install_requires=['torch'],
     packages=["torchcontentarea"],
     package_dir={"":"src"},
     package_data={'torchcontentarea': ['models/*.pt']},
+    install_requires=['torch>=0.9,<=1.11'],
     ext_modules=[cpp_extension.CUDAExtension("torchcontentareaext", ext_source_files, extra_compile_args=compile_args)],
     cmdclass=versioneer.get_cmdclass({"build_ext": cpp_extension.BuildExtension})
 )
