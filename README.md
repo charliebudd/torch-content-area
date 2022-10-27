@@ -1,5 +1,12 @@
 # Torch Content Area
-A PyTorch tool kit for estimating the circular content area in endoscopic footage.
+A PyTorch tool kit for estimating the circular content area in endoscopic footage. This implementation is released alongside our publication:
+
+<ul><b>Rapid and robust endoscopic content area estimation: A lean GPU-based pipeline and curated benchmark dataset</b>,<br>
+    Charlie Budd, Luis C. Garcia-Peraza-Herrera, Martin Huber, Sebastien Ourselin, Tom Vercauteren.<br>
+    [ <a href="https://arxiv.org/abs/2210.14771">arXiv</a> ]
+</ul>
+
+If you make use of this work, please cite the paper.
 
 [![Build Status](https://github.com/charliebudd/torch-content-area/actions/workflows/build.yml/badge.svg)](https://github.com/charliebudd/torch-content-area/actions/workflows/build.yml)
 
