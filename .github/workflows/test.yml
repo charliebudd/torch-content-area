@@ -11,13 +11,13 @@ on:
         default: final-wheels
       python-versions:
         type: string
-        default: "[3.6, 3.7, 3.8]"
+        default: "[3.6, 3.7, 3.8, 3.9]"
       pytorch-versions:
         type: string
-        default: "[1.9, '1.10']"
+        default: "[1.9, '1.10', 1.11, 1.12]"
       cuda-versions:
         type: string
-        default: "[10.2, 11.3]"
+        default: "[10.2, 11.3, 11.6]"
 
 jobs:
   test-release:
@@ -26,14 +26,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ${{ fromJson(inputs.python-versions) }}
-        pytorch: ${{ fromJson(inputs.pytorch-versions) }}
-        cuda: ${{ fromJson(inputs.cuda-versions) }}
+        python-version: ${{ fromJson(inputs.python-versions) }}
+        pytorch-version: ${{ fromJson(inputs.pytorch-versions) }}
+        cuda-version: ${{ fromJson(inputs.cuda-versions) }}
         exclude:
-          - pytorch: 1.9
-            cuda: 11.3 
-          - python: 3.6
-            pytorch: 1.11
+          - pytorch-version: 1.9
+            cuda-version: 11.3
+          - python-version: 3.6
+            pytorch-version: 1.11
+          - python-version: 3.6
+            pytorch-version: 1.12
+          - pytorch-version: 1.9
+            cuda-version: 11.6 
+          - pytorch-version: '1.10'
+            cuda-version: 11.6 
+          - pytorch-version: 1.11
+            cuda-version: 11.6 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
@@ -41,11 +49,11 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v3
         with:
-          python-version: ${{ matrix.python }}
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Test Requirements
         run: |
-          ENV=../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}
+          ENV=../.venv-${{ matrix.python-version }}-${{ matrix.pytorch-version }}-${{ matrix.cuda-version }}
           if [ ! -d "$ENV" ]; then
             python -m venv $ENV
           fi
@@ -53,7 +61,7 @@ jobs:
 
           python -m pip install -U --force-reinstall pip
           python -m pip install numpy py-cpuinfo ecadataset
-          python -m pip install torch==${{ matrix.pytorch }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda }} | sed 's/\.//')/torch_stable.html
+          python -m pip install torch==${{ matrix.pytorch-version }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda-version }} | sed 's/\.//')/torch_stable.html
           
           ln -s ../eca-data eca-data
 
@@ -63,7 +71,7 @@ jobs:
       - name: Install torchcontentarea From PyPI Index
         if: ${{ !inputs.local-wheels }}
         run: |
-          . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
+          . ../.venv-${{ matrix.python-version }}-${{ matrix.pytorch-version }}-${{ matrix.cuda-version }}/bin/activate
           python -m pip install --force-reinstall --no-deps torchcontentarea -i ${{ inputs.wheel-location }}
         
       - name: Download Cached Wheels
@@ -76,10 +84,10 @@ jobs:
       - name: Install torchcontentarea from Cached Wheels
         if: ${{ inputs.local-wheels }}
         run: |
-          . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
-          python -m pip install --force-reinstall --no-deps ${{ inputs.wheel-location }}/torchcontentarea*cp$(echo ${{ matrix.python }} | sed 's/\.//')*.whl
+          . ../.venv-${{ matrix.python-version }}-${{ matrix.pytorch-version }}-${{ matrix.cuda-version }}/bin/activate
+          python -m pip install --force-reinstall --no-deps ${{ inputs.wheel-location }}/torchcontentarea*cp$(echo ${{ matrix.python-version }} | sed 's/\.//')*.whl
 
       - name: Run Tests
         run: |
-          . ../.venv-${{ matrix.python }}-${{ matrix.pytorch }}-${{ matrix.cuda }}/bin/activate
+          . ../.venv-${{ matrix.python-version }}-${{ matrix.pytorch-version }}-${{ matrix.cuda-version }}/bin/activate
           python -m unittest tests
