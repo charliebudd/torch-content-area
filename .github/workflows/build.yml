@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - main
+      - versioning-fix
     tags:
       - 'v*'
 
@@ -15,7 +16,7 @@ jobs:
     name: Build Wheels
     uses: charliebudd/torch-extension-builder/.github/workflows/build-pytorch-extension-wheels.yml@main
     with:
-      build-command: "git status && python setup.py version && python setup.py bdist_wheel"
+      build-command: "pwd && git status && python setup.py version && python setup.py bdist_wheel"
 
   test-wheels-locally:
     name: Test Wheels Locally
