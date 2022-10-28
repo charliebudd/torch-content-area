@@ -25,8 +25,8 @@ jobs:
       local-wheels: true
       wheel-location: final-wheels
       python-versions: "[3.6, 3.7, 3.8, 3.9]"
-      pytorch-versions: "[1.9, '1.10', 1.11]"
-      cuda-versions: "[10.2, 11.3]"
+      pytorch-versions: "[1.9, '1.10', 1.11, 1.12]"
+      cuda-versions: "[10.2, 11.3, 11.6]"
 
   update-perfromance-stats:
     if: ${{ github.base_ref == 'main' }}
@@ -62,8 +62,8 @@ jobs:
       local-wheels: false
       wheel-location: https://test.pypi.org/simple/
       python-versions: "[3.6, 3.7, 3.8, 3.9]"
-      pytorch-versions: "[1.9, '1.10', 1.11]"
-      cuda-versions: "[10.2, 11.3]"
+      pytorch-versions: "[1.9, '1.10', 1.11, 1.12]"
+      cuda-versions: "[10.2, 11.3, 11.6]"
 
   publish-wheels-to-pypi:
     if: startsWith(github.ref, 'refs/tags/v')
