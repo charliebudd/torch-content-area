@@ -61,12 +61,16 @@ jobs:
 
           python -m pip install -U --force-reinstall pip
           python -m pip install numpy py-cpuinfo ecadataset
-          python -m pip install torch==${{ matrix.pytorch-version }} -f https://download.pytorch.org/whl/cu$(echo ${{ matrix.cuda-version }} | sed 's/\.//')/torch_stable.html
+          export FULL_PYTORCH_VERSION=$(python -m pip index versions torch -f https://download.pytorch.org/whl/torch_stable.html | grep -o ${PYTORCH_VERSION}.[0-9]+cu${CUDA_VERSION//.} | head -n 1)
+          python -m pip --no-cache-dir install torch==${FULL_PYTORCH_VERSION} -f https://download.pytorch.org/whl/torch_stable.html
           
           ln -s ../eca-data eca-data
 
           python -V
           pip show torch
+        env:
+          PYTORCH_VERSION: ${{ matrix.pytorch-version }}
+          CUDA_VERSION: ${{ matrix.cuda-version }}
         
       - name: Install torchcontentarea From PyPI Index
         if: ${{ !inputs.local-wheels }}
