@@ -13,10 +13,15 @@ If you make use of this work, please cite the paper.
 ![Example GIF](example.gif?raw=true)
 
 ## Installation
-To install the latest version, simply run...
+For Linux users, to install the latest version, simply run...
 ```
 pip install torchcontentarea
 ```
+For Windows users, or if you encounter any issues, try building from source by running...
+```
+pip install git+https://github.com/charliebudd/torch-content-area
+```
+***Note:*** *this will require that you have CUDA installed and that its version matches the version of CUDA used to build your installation of PyTorch.*
 
 ## Usage
 ```python
