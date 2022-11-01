@@ -2,6 +2,7 @@ from setuptools import setup
 from torch.utils import cpp_extension
 from glob import glob
 import versioneer
+import sys
 
 with open("README.md") as file:
     long_description = file.read()
@@ -10,7 +11,7 @@ ext_src_dir = "src/torchcontentarea/csrc/"
 ext_source_files = glob(ext_src_dir + "**/*.cpp", recursive=True) + glob(ext_src_dir + "**/*.cu", recursive=True)
 
 compile_args = {
-    'cxx': ['-g0', '-O3'],
+    'cxx': ['/O2'] if sys.platform.startswith("win") else ['-g0', '-O3'],
     'nvcc': ['-O3']
 }
 
