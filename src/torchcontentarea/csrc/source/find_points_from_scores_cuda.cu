@@ -4,7 +4,7 @@
 namespace cuda
 {
     template<int warp_count>
-    __global__ void find_best_edge(const float* g_score_strips, int* g_edge_x, int* g_edge_y, float* g_edge_scores, const int image_width, const int image_height, const int strip_count, const int half_patch_size)
+    __global__ void find_best_edge(const float* g_score_strips, float* g_edge_x, float* g_edge_y, float* g_edge_scores, const int image_width, const int image_height, const int strip_count, const int half_patch_size)
     {
         __shared__ float s_cross_warp_operation_buffer[warp_count];
         __shared__ float s_cross_warp_operation_buffer_2[warp_count];
@@ -81,7 +81,7 @@ namespace cuda
     #define warp_size 32
     #define warp_count 8
 
-    void find_points_from_strip_scores(const float* strips, const int image_height, const int image_width, const int strip_count, const int model_patch_size, int* points_x, int* points_y, float* point_score)
+    void find_points_from_strip_scores(const float* strips, const int image_height, const int image_width, const int strip_count, const int model_patch_size, float* points_x, float* points_y, float* point_score)
     {
         int half_patch_size = (model_patch_size - 1) / 2;
 

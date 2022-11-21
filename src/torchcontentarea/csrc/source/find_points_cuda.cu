@@ -26,7 +26,7 @@ namespace cuda
     // =========================================================================
     // Kernels...
 
-    __global__ void find_points_kernel(const uint8* g_image, int* g_edge_x, int* g_edge_y, float* g_edge_scores, const int image_width, const int image_height, const int strip_count, const FeatureThresholds feature_thresholds)
+    __global__ void find_points_kernel(const uint8* g_image, float* g_edge_x, float* g_edge_y, float* g_edge_scores, const int image_width, const int image_height, const int strip_count, const FeatureThresholds feature_thresholds)
     {
         constexpr int warp_size = 32;
 
@@ -211,7 +211,7 @@ namespace cuda
     // =========================================================================
     // Main function...
     
-    void find_points(const uint8* image, const int image_height, const int image_width, const int strip_count, const FeatureThresholds feature_thresholds, int* points_x, int* points_y, float* point_scores)
+    void find_points(const uint8* image, const int image_height, const int image_width, const int strip_count, const FeatureThresholds feature_thresholds, float* points_x, float* points_y, float* point_scores)
     {
         int half_width = image_width / 2;
         int warps = 1 + (half_width - 1) / 32;

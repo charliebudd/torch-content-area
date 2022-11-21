@@ -159,7 +159,7 @@ namespace cuda
     // Kernels...
 
     template<int warp_count>
-    __global__ void fit_circle_kernel(const int* g_edge_x, const int* g_edge_y, const float* g_edge_scores, float* g_circle, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width)
+    __global__ void fit_circle_kernel(const float* g_edge_x, const float* g_edge_y, const float* g_edge_scores, float* g_circle, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width)
     {
         extern __shared__ int s_edge_info[];
         __shared__ int s_valid_point_count;
@@ -372,7 +372,7 @@ namespace cuda
     #define ransac_threads RANSAC_ATTEMPTS
     #define ransac_warps (1 + (RANSAC_ATTEMPTS - 1) / 32)
 
-    void fit_circle(const int* points_x, const int* points_y, const float* points_score, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width, float* results)
+    void fit_circle(const float* points_x, const float* points_y, const float* points_score, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width, float* results)
     {
         dim3 grid(1);
         dim3 block(point_count);
