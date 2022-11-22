@@ -28,7 +28,7 @@ pip install git+https://github.com/charliebudd/torch-content-area
 from torchvision.io import read_image
 from torchcontentarea import estimate_area, get_points, fit_area
 
-# Image in NCHW format, byte/uint8 type is expected
+# Grayscale or RGB image in NCHW or CHW format, byte/uint8 type is expected
 image = read_image("my_image.png").unsqueeze(0)
 
 # Either directly estimate area from image...
