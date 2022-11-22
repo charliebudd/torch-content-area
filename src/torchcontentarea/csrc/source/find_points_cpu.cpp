@@ -11,9 +11,16 @@ namespace cpu
         return 0.2126f * data[index + 0 * color_stride] + 0.7152f * data[index + 1 * color_stride] + 0.0722f * data[index + 2 * color_stride];
     }
 
-    float load_sobel_strip(const uint8* data, const int index, const int spatial_stride, const int color_stride)
+    float load_sobel_strip(const uint8* data, const int index, const int spatial_stride, const int color_stride, const int channel_count)
     {
-        return  0.25 * load_grayscale(data, index - spatial_stride, color_stride) + 0.5 * load_grayscale(data, index, color_stride) + 0.25 * load_grayscale(data, index + spatial_stride, color_stride);
+        if (channel_count == 3)
+        {
+            return  0.25 * load_grayscale(data, index - spatial_stride, color_stride) + 0.5 * load_grayscale(data, index, color_stride) + 0.25 * load_grayscale(data, index + spatial_stride, color_stride);
+        }
+        else
+        {
+            return  0.25 * data[index - spatial_stride] + 0.5 * data[index] + 0.25 * data[index + spatial_stride];
+        }
     }
 
     // =========================================================================
@@ -44,10 +51,10 @@ namespace cpu
                         float intensity = channel_count == 3 ? load_grayscale(image, image_x + image_y * image_width, image_width * image_height) : image[image_x + image_y * image_width];
                         max_preceeding_intensity = max_preceeding_intensity < intensity ? intensity : max_preceeding_intensity;
 
-                        float left  = load_sobel_strip(image, (image_x - 1) + image_y * image_width, image_width, image_width * image_height);
-                        float right = load_sobel_strip(image, (image_x + 1) + image_y * image_width, image_width, image_width * image_height);
-                        float top = load_sobel_strip(image, image_x + (image_y - 1) * image_width, 1, image_width * image_height);
-                        float bot = load_sobel_strip(image, image_x + (image_y + 1) * image_width, 1, image_width * image_height);
+                        float left  = load_sobel_strip(image, (image_x - 1) + image_y * image_width, image_width, image_width * image_height, channel_count);
+                        float right = load_sobel_strip(image, (image_x + 1) + image_y * image_width, image_width, image_width * image_height, channel_count);
+                        float top = load_sobel_strip(image, image_x + (image_y - 1) * image_width, 1, image_width * image_height, channel_count);
+                        float bot = load_sobel_strip(image, image_x + (image_y + 1) * image_width, 1, image_width * image_height, channel_count);
 
                         float grad_x = right - left;
                         float grad_y = bot - top;
