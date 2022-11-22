@@ -26,9 +26,14 @@ namespace cuda
     // =========================================================================
     // Kernels...
 
-    __global__ void find_points_kernel(const uint8* g_image, float* g_edge_x, float* g_edge_y, float* g_edge_scores, const int image_width, const int image_height, const int strip_count, const FeatureThresholds feature_thresholds)
+    __global__ void find_points_kernel(const uint8* g_image_batch, float* g_edge_x_batch, float* g_edge_y_batch, float* g_edge_scores_batch, const int channel_count, const int image_width, const int image_height, const int strip_count, const FeatureThresholds feature_thresholds)
     {
         constexpr int warp_size = 32;
+
+        const uint8* g_image = g_image_batch + blockIdx.z * channel_count * image_width * image_height;
+        float* g_edge_x = g_edge_x_batch + blockIdx.z * 3 * 2 * strip_count;
+        float* g_edge_y = g_edge_y_batch + blockIdx.z * 3 * 2 * strip_count;
+        float* g_edge_scores = g_edge_scores_batch + blockIdx.z * 3 * 2 * strip_count;
 
         int thread_count = blockDim.x;
         int warp_count = 1 + (thread_count - 1) / warp_size;
@@ -179,8 +184,10 @@ namespace cuda
             best_edge_x = s_cross_warp_operation_buffer[lane_index];
             best_edge_score = s_cross_warp_operation_buffer_2[lane_index];
 
+            int next_power_two = pow(2, ceil(log(warp_count)/log(2)));
+
             #pragma unroll
-            for (int offset = warp_count >> 1 ; offset > 0; offset >>= 1)
+            for (int offset = next_power_two >> 1 ; offset > 0; offset >>= 1)
             {
                 int other_edge_x = __shfl_down_sync(0xffffffff, best_edge_x, offset);
                 float other_edge_score = __shfl_down_sync(0xffffffff, best_edge_score, offset);
@@ -211,16 +218,16 @@ namespace cuda
     // =========================================================================
     // Main function...
     
-    void find_points(const uint8* image, const int image_height, const int image_width, const int strip_count, const FeatureThresholds feature_thresholds, float* points_x, float* points_y, float* point_scores)
+    void find_points(const uint8* image, const int batch_count, const int channel_count, const int image_height, const int image_width, const int strip_count, const FeatureThresholds feature_thresholds, float* points_x, float* points_y, float* point_scores)
     {
         int half_width = image_width / 2;
         int warps = 1 + (half_width - 1) / 32;
         int threads = warps * 32;
 
-        dim3 grid(2, strip_count);
+        dim3 grid(2, strip_count, batch_count);
         dim3 block(threads);
-        int  shared_memmory = (3 * threads + 2 * warps) * sizeof(int);
+        int shared_memmory = (3 * threads + 2 * warps) * sizeof(int);
 
-        find_points_kernel<<<grid, block, shared_memmory>>>(image, points_x, points_y, point_scores, image_width, image_height, strip_count, feature_thresholds);
+        find_points_kernel<<<grid, block, shared_memmory>>>(image, points_x, points_y, point_scores, channel_count, image_width, image_height, strip_count, feature_thresholds);
     }
 }

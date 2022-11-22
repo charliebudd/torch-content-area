@@ -3,7 +3,7 @@
 
 namespace cpu
 {
-    void make_strips(const uint8* image, const int batch_count, const int image_height, const int image_width, const int strip_count, const int strip_width, float* strips)
+    void make_strips(const uint8* image, const int batch_count, const int channel_count, const int image_height, const int image_width, const int strip_count, const int strip_width, float* strips)
     {
         for (int batch_index = 0; batch_index < batch_count; ++batch_index)
         {

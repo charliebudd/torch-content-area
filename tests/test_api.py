@@ -14,12 +14,12 @@ from torchcontentarea import estimate_area_handcrafted, estimate_area_learned, g
 ESTIMATION_MEHTODS = [
     ("handcrafted cpu", estimate_area_handcrafted, "cpu"),
     ("learned cpu", estimate_area_learned, "cpu"),
-    # ("handcrafted cuda", estimate_area_handcrafted, "cuda"),
-    # ("learned cuda", estimate_area_learned, "cuda"),
+    ("handcrafted cuda", estimate_area_handcrafted, "cuda"),
+    ("learned cuda", estimate_area_learned, "cuda"),
     ("handcrafted cpu two staged", lambda x: fit_area(get_points_handcrafted(x), x.shape[-2:]), "cpu"),
     ("learned cpu two staged", lambda x: fit_area(get_points_learned(x), x.shape[-2:]), "cpu"),
-    # ("handcrafted cuda two staged", lambda x: fit_area(get_points_handcrafted(x), x.shape[-2:]), "cuda"),
-    # ("learned cuda two staged", lambda x: fit_area(get_points_learned(x), x.shape[-2:]), "cuda"),
+    ("handcrafted cuda two staged", lambda x: fit_area(get_points_handcrafted(x), x.shape[-2:]), "cuda"),
+    ("learned cuda two staged", lambda x: fit_area(get_points_learned(x), x.shape[-2:]), "cuda"),
 ]
 
 class TestAPI(unittest.TestCase):

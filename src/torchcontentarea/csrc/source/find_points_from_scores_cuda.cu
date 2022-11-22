@@ -4,10 +4,15 @@
 namespace cuda
 {
     template<int warp_count>
-    __global__ void find_best_edge(const float* g_score_strips, float* g_edge_x, float* g_edge_y, float* g_edge_scores, const int image_width, const int image_height, const int strip_count, const int half_patch_size)
+    __global__ void find_best_edge(const float* g_score_strips_batch, float* g_edge_x_batch, float* g_edge_y_batch, float* g_edge_scores_batch, const int image_width, const int image_height, const int strip_count, const int half_patch_size)
     {
         __shared__ float s_cross_warp_operation_buffer[warp_count];
         __shared__ float s_cross_warp_operation_buffer_2[warp_count];
+
+        const float* g_score_strips = g_score_strips_batch + blockIdx.z * strip_count * image_width;
+        float* g_edge_x = g_edge_x_batch + blockIdx.z * 3 * 2 * strip_count;
+        float* g_edge_y = g_edge_y_batch + blockIdx.z * 3 * 2 * strip_count;
+        float* g_edge_scores = g_edge_scores_batch + blockIdx.z * 3 * 2 * strip_count;
 
         int warp_index = threadIdx.x >> 5;
         int lane_index = threadIdx.x & 31;
@@ -55,8 +60,10 @@ namespace cuda
             best_edge_x = s_cross_warp_operation_buffer[lane_index];
             best_edge_score = s_cross_warp_operation_buffer_2[lane_index];
 
+            int next_power_two = pow(2, ceil(log(warp_count)/log(2)));
+
             #pragma unroll
-            for (int offset = warp_count >> 1 ; offset > 0; offset >>= 1)
+            for (int offset = next_power_two >> 1 ; offset > 0; offset >>= 1)
             {
                 int other_edge_x = __shfl_down_sync(0xffffffff, best_edge_x, offset);
                 float other_edge_score = __shfl_down_sync(0xffffffff, best_edge_score, offset);
@@ -71,6 +78,7 @@ namespace cuda
             if (lane_index == 0)
             {
                 int point_index = flip ? strip_index : strip_index + strip_count;
+                
                 g_edge_x[point_index] = best_edge_x + half_patch_size;
                 g_edge_y[point_index] = strip_height;
                 g_edge_scores[point_index] = best_edge_score;
@@ -81,11 +89,11 @@ namespace cuda
     #define warp_size 32
     #define warp_count 8
 
-    void find_points_from_strip_scores(const float* strips, const int image_height, const int image_width, const int strip_count, const int model_patch_size, float* points_x, float* points_y, float* point_score)
+    void find_points_from_strip_scores(const float* strips, const int batch_count, const int image_height, const int image_width, const int strip_count, const int model_patch_size, float* points_x, float* points_y, float* point_score)
     {
         int half_patch_size = (model_patch_size - 1) / 2;
 
-        dim3 find_points_grid(2, strip_count);
+        dim3 find_points_grid(2, strip_count, batch_count);
         dim3 find_points_block(warp_size * warp_count);
         find_best_edge<warp_count><<<find_points_grid, find_points_block>>>(strips, points_x, points_y, point_score, image_width - 2 * half_patch_size, image_height, strip_count, half_patch_size);
     }

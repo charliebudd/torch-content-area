@@ -88,9 +88,9 @@ torch::Tensor estimate_area_handcrafted(torch::Tensor image, int strip_count, Fe
         float* points_y = temp_buffer + 1 * point_count;
         float* points_s = temp_buffer + 2 * point_count;
 
-        cuda::find_points(image.data_ptr<uint8>(), image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
+        cuda::find_points(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
        
-        cuda::fit_circle(points_x, points_y, points_s, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
+        cuda::fit_circle(points_x, points_y, points_s, batch_count, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
 
         cudaFree(temp_buffer);
     }
@@ -105,6 +105,7 @@ torch::Tensor estimate_area_learned(torch::Tensor image, int strip_count, torch:
     bool batched = image.dim() == 4;
 
     int batch_count = batched ? image.size(0) : 1;
+    int channel_count = image.size(-3);
     int image_height = image.size(-2);
     int image_width = image.size(-1);
     int point_count = 2 * strip_count;
@@ -122,7 +123,7 @@ torch::Tensor estimate_area_learned(torch::Tensor image, int strip_count, torch:
         float* points_y = temp_buffer + 1 * point_count;
         float* points_s = temp_buffer + 2 * point_count;
         
-        cpu::make_strips(image.data_ptr<uint8>(), batch_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
+        cpu::make_strips(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
 
         torch::Tensor strip_scores = torch::sigmoid(model.forward(model_input).toTensor());
 
@@ -140,13 +141,13 @@ torch::Tensor estimate_area_learned(torch::Tensor image, int strip_count, torch:
         float* points_y = temp_buffer + 1 * point_count;
         float* points_s = temp_buffer + 2 * point_count;
         
-        cuda::make_strips(image.data_ptr<uint8>(), image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
+        cuda::make_strips(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
         
         torch::Tensor strip_scores = torch::sigmoid(model.forward(model_input).toTensor());
 
-        cuda::find_points_from_strip_scores(strip_scores.data_ptr<float>(), image_height, image_width, strip_count, model_patch_size, points_x, points_y, points_s);
+        cuda::find_points_from_strip_scores(strip_scores.data_ptr<float>(), batch_count, image_height, image_width, strip_count, model_patch_size, points_x, points_y, points_s);
         
-        cuda::fit_circle(points_x, points_y, points_s, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
+        cuda::fit_circle(points_x, points_y, points_s, batch_count, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
 
         cudaFree(temp_buffer);
     }
@@ -180,7 +181,7 @@ torch::Tensor get_points_handcrafted(torch::Tensor image, int strip_count, Featu
     }
     else
     {
-        cuda::find_points(image.data_ptr<uint8>(), image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
+        cuda::find_points(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
     }
 
     return result;
@@ -193,6 +194,7 @@ torch::Tensor get_points_learned(torch::Tensor image, int strip_count, torch::ji
     bool batched = image.dim() == 4;
 
     int batch_count = batched ? image.size(0) : 1;
+    int channel_count = image.size(-3);
     int image_height = image.size(-2);
     int image_width = image.size(-1);
     int point_count = 2 * strip_count;
@@ -210,7 +212,7 @@ torch::Tensor get_points_learned(torch::Tensor image, int strip_count, torch::ji
     
     if (image.device().is_cpu())
     {
-        cpu::make_strips(image.data_ptr<uint8>(), batch_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
+        cpu::make_strips(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
         
         torch::Tensor strip_scores = torch::sigmoid(model.forward(model_input).toTensor());
 
@@ -218,11 +220,11 @@ torch::Tensor get_points_learned(torch::Tensor image, int strip_count, torch::ji
     }
     else
     {
-        cuda::make_strips(image.data_ptr<uint8>(), image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
+        cuda::make_strips(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
         
         torch::Tensor strip_scores = torch::sigmoid(model.forward(model_input).toTensor());
 
-        cuda::find_points_from_strip_scores(strip_scores.data_ptr<float>(), image_height, image_width, strip_count, model_patch_size, points_x, points_y, points_s);
+        cuda::find_points_from_strip_scores(strip_scores.data_ptr<float>(), batch_count, image_height, image_width, strip_count, model_patch_size, points_x, points_y, points_s);
     }
 
     return result;
@@ -253,7 +255,7 @@ torch::Tensor fit_area(torch::Tensor points, py::tuple image_size, ConfidenceThr
     }
     else
     {
-        cuda::fit_circle(points_x, points_y, points_s, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
+        cuda::fit_circle(points_x, points_y, points_s, batch_count, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
     }
 
     return result;

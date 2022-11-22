@@ -159,7 +159,7 @@ namespace cuda
     // Kernels...
 
     template<int warp_count>
-    __global__ void fit_circle_kernel(const float* g_edge_x, const float* g_edge_y, const float* g_edge_scores, float* g_circle, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width)
+    __global__ void fit_circle_kernel(const float* g_edge_x_batch, const float* g_edge_y_batch, const float* g_edge_scores_batch, float* g_circle_batch, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width)
     {
         extern __shared__ int s_edge_info[];
         __shared__ int s_valid_point_count;
@@ -167,6 +167,11 @@ namespace cuda
         __shared__ float s_x_reduction_buffer[warp_count];
         __shared__ float s_y_reduction_buffer[warp_count];
         __shared__ float s_r_reduction_buffer[warp_count];
+
+        const float* g_edge_x = g_edge_x_batch + blockIdx.x * 3 * point_count;
+        const float* g_edge_y = g_edge_y_batch + blockIdx.x * 3 * point_count;
+        const float* g_edge_scores = g_edge_scores_batch + blockIdx.x * 3 * point_count;
+        float* g_circle = g_circle_batch + blockIdx.x * 4;
 
         int* s_edge_x = (int*)(s_edge_info + 0 * point_count);
         int* s_edge_y = (int*)(s_edge_info + 1 * point_count);
@@ -372,9 +377,9 @@ namespace cuda
     #define ransac_threads RANSAC_ATTEMPTS
     #define ransac_warps (1 + (RANSAC_ATTEMPTS - 1) / 32)
 
-    void fit_circle(const float* points_x, const float* points_y, const float* points_score, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width, float* results)
+    void fit_circle(const float* points_x, const float* points_y, const float* points_score, const int batch_count, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width, float* results)
     {
-        dim3 grid(1);
+        dim3 grid(batch_count);
         dim3 block(point_count);
         fit_circle_kernel<ransac_warps><<<grid, block, 3 * point_count * sizeof(int)>>>(points_x, points_y, points_score, results, point_count, confidence_thresholds, image_height, image_width);
     }
