@@ -1,12 +1,8 @@
 import torch
-import numpy as np
 import unittest
-import cpuinfo
-from time import sleep
 
 from .utils.data import DummyDataset
-from .utils.scoring import content_area_hausdorff, MISS_THRESHOLD, BAD_MISS_THRESHOLD
-from .utils.profiling import Timer
+from .utils.scoring import content_area_hausdorff, MISS_THRESHOLD
 
 from torchcontentarea import estimate_area_handcrafted, estimate_area_learned, get_points_handcrafted, get_points_learned, fit_area
 
@@ -52,11 +48,27 @@ class TestAPI(unittest.TestCase):
                     error, _ = content_area_hausdorff(true_area, estimated_area, images.shape[-2:])
                     self.assertLess(error, MISS_THRESHOLD)
         
-    # def test_rgb(self):
-    #     pass
+    def test_rgb(self):
+        image, _, true_area = self.dataset[0]
+        for name, method, device in ESTIMATION_MEHTODS:
+            with self.subTest(name):
+                image = image.to(device)
+                result = method(image).tolist()
+                estimated_area = result[0:3]
+                error, _ = content_area_hausdorff(true_area, estimated_area, image.shape[-2:])
+                self.assertLess(error, MISS_THRESHOLD)
     
-    # def test_grayscale(self):
-    #     pass
+    def test_grayscale(self):
+        image, _, true_area = self.dataset[0]
+        image = (0.2126 * image[0:1] + 0.7152 * image[1:2]+ 0.0722 * image[2:3]).to(torch.uint8)
+        for name, method, device in ESTIMATION_MEHTODS:
+            with self.subTest(name):
+                image = image.to(device)
+                result = method(image).tolist()
+                estimated_area = result[0:3]
+                error, _ = content_area_hausdorff(true_area, estimated_area, image.shape[-2:])
+                self.assertLess(error, MISS_THRESHOLD)
+    
     
     # def test_large(self):
     #     pass
@@ -64,15 +76,18 @@ class TestAPI(unittest.TestCase):
     # def test_small(self):
     #     pass
     
-    # def test_float(self):
+    # def test_byte(self):
     #     pass
     
     # def test_int(self):
     #     pass
-    
-    # def test_uint(self):
-    #     pass
 
+    # def test_float(self):
+    #     pass
+    
+    # def test_double(self):
+    #     pass
+    
 
 if __name__ == '__main__':
     unittest.main()

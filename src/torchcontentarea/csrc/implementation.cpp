@@ -1,37 +1,36 @@
 #include <cuda_runtime.h>
+#include <torch/csrc/utils/tensor_dtypes.h>
 #include "implementation.hpp"
 #include "cpu_functions.hpp"
 #include "cuda_functions.cuh"
 
-#define IMAGE_DTYPE_ERROR_MSG std::string("Unsupported image dtype.")
-#define IMAGE_NDIM_ERROR_MSG(d) std::string("Expected an image tensor with 4 dimensions but found . Is you Image in NCHW format?").insert(53, std::to_string(d))
-#define IMAGE_CHANNEL_ERROR_MSG(c) std::string("Expected a grayscale or RGB image but found size  at position 1. Is you Image in NCHW format?").insert(49, std::to_string(c))
-
+#define IMAGE_DTYPE_ERROR_MSG(t) std::string("Unsupported image dtype .").insert(24, torch::utils::getDtypeNames(t).second)
+#define IMAGE_NDIM_ERROR_MSG(d) std::string("Expected an image tensor with 3 or 4 dimensions but found .").insert(58, std::to_string(d))
+#define IMAGE_CHANNEL_ERROR_MSG(c) std::string("Expected a grayscale or RGB image but found size  at position 1.").insert(49, std::to_string(c))
 #define POINTS_NDIM_ERROR_MSG(d) std::string("Expected a point tensor with 2 or 3 dimensions but found .").insert(52, std::to_string(d))
 #define POINTS_CHANNEL_ERROR_MSG(d) std::string("Expected a point tensor with 3 channels but found .").insert(50, std::to_string(d))
 
-ImageFormat check_image_tensor(torch::Tensor &image)
+void check_image_tensor(torch::Tensor &image)
 {
     image = image.contiguous();
 
-    // if (image.dim() != 4)
-    // {
-    //     throw std::runtime_error(IMAGE_NDIM_ERROR_MSG(image.dim()));
-    // }
+    if (image.dim() != 3 && image.dim() != 4)
+    {
+        throw std::runtime_error(IMAGE_NDIM_ERROR_MSG(image.dim()));
+    }
 
-    // if (image.size(1) != 1 && image.size(1) != 3)
-    // {
-    //     throw std::runtime_error(IMAGE_CHANNEL_ERROR_MSG(image.size(1)));
-    // }
+    if (image.size(-3) != 1 && image.size(-3) != 3)
+    {
+        throw std::runtime_error(IMAGE_CHANNEL_ERROR_MSG(image.size(1)));
+    }
 
-    bool is_rgb = image.size(1) == 3;
     switch (torch::typeMetaToScalarType(image.dtype()))
     {
-        case (torch::kFloat): return is_rgb ? rgb_float : gray_float;
-        case (torch::kDouble): return is_rgb ? rgb_double : gray_double;
-        case (torch::kByte): return is_rgb ? rgb_uint8 : gray_uint8;
-        case (torch::kInt): return is_rgb ? rgb_int : gray_int;
-        default: throw std::runtime_error(IMAGE_DTYPE_ERROR_MSG);
+        case (torch::kFloat): break;
+        case (torch::kDouble): break;
+        case (torch::kByte): break;
+        case (torch::kInt): break;
+        default: throw std::runtime_error(IMAGE_DTYPE_ERROR_MSG(torch::typeMetaToScalarType(image.dtype())));
     }
 }
 
@@ -54,7 +53,7 @@ void check_points(torch::Tensor &points)
 
 torch::Tensor estimate_area_handcrafted(torch::Tensor image, int strip_count, FeatureThresholds feature_thresholds, ConfidenceThresholds confidence_thresholds)
 {
-    ImageFormat image_format = check_image_tensor(image);
+    check_image_tensor(image);
 
     bool batched = image.dim() == 4;
 
@@ -100,7 +99,7 @@ torch::Tensor estimate_area_handcrafted(torch::Tensor image, int strip_count, Fe
 
 torch::Tensor estimate_area_learned(torch::Tensor image, int strip_count, torch::jit::Module model, int model_patch_size, ConfidenceThresholds confidence_thresholds)
 {
-    ImageFormat image_format = check_image_tensor(image);
+    check_image_tensor(image);
 
     bool batched = image.dim() == 4;
 
@@ -157,7 +156,7 @@ torch::Tensor estimate_area_learned(torch::Tensor image, int strip_count, torch:
 
 torch::Tensor get_points_handcrafted(torch::Tensor image, int strip_count, FeatureThresholds feature_thresholds)
 {
-    ImageFormat image_format = check_image_tensor(image);
+    check_image_tensor(image);
 
     bool batched = image.dim() == 4;
 
@@ -189,7 +188,7 @@ torch::Tensor get_points_handcrafted(torch::Tensor image, int strip_count, Featu
 
 torch::Tensor get_points_learned(torch::Tensor image, int strip_count, torch::jit::Module model, int model_patch_size)
 {
-    ImageFormat image_format = check_image_tensor(image);
+    check_image_tensor(image);
 
     bool batched = image.dim() == 4;
 

@@ -41,7 +41,7 @@ namespace cpu
                     {
                         int image_x = flip ? image_width - 1 - x : x;
 
-                        float intensity = load_grayscale(image, image_x + image_y * image_width, image_width * image_height);
+                        float intensity = channel_count == 3 ? load_grayscale(image, image_x + image_y * image_width, image_width * image_height) : image[image_x + image_y * image_width];
                         max_preceeding_intensity = max_preceeding_intensity < intensity ? intensity : max_preceeding_intensity;
 
                         float left  = load_sobel_strip(image, (image_x - 1) + image_y * image_width, image_width, image_width * image_height);

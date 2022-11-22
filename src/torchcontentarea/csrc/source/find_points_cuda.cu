@@ -60,7 +60,7 @@ namespace cuda
         for (int y = 0; y < 3; y++)
         {
             int image_element_index = image_x + (strip_height + (y - 1)) * image_width;
-            s_image_strip[threadIdx.x + y * thread_count] = load_grayscale(g_image, image_element_index, image_width * image_height);
+            s_image_strip[threadIdx.x + y * thread_count] = channel_count == 3 ? load_grayscale(g_image, image_element_index, image_width * image_height) : g_image[image_element_index];
         }
         
         __syncthreads();

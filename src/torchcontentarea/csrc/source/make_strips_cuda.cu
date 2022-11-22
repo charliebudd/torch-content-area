@@ -28,9 +28,9 @@ namespace cuda
         int image_pixel_index = image_x + image_y * image_width;
         int strip_pixel_index = strip_offset + image_x + strip_y * image_width;
 
-        float r = (g_image[image_pixel_index + 0 * image_width * image_height]/255.0f - 0.3441f) / 0.2381f;
-        float g = (g_image[image_pixel_index + 1 * image_width * image_height]/255.0f - 0.2251f) / 0.1994f;
-        float b = (g_image[image_pixel_index + 2 * image_width * image_height]/255.0f - 0.2203f) / 0.1939f;
+        float r = (g_image[image_pixel_index + (channel_count == 3 ? 0 : 0) * image_width * image_height]/255.0f - 0.3441f) / 0.2381f;
+        float g = (g_image[image_pixel_index + (channel_count == 3 ? 1 : 0) * image_width * image_height]/255.0f - 0.2251f) / 0.1994f;
+        float b = (g_image[image_pixel_index + (channel_count == 3 ? 2 : 0) * image_width * image_height]/255.0f - 0.2203f) / 0.1939f;
         float x = ((float)image_x / image_width) - 0.5f;
         float y = ((float)image_y / image_height) - 0.5f;
 
