@@ -26,10 +26,10 @@ void check_image_tensor(torch::Tensor &image)
 
     switch (torch::typeMetaToScalarType(image.dtype()))
     {
-        case (torch::kFloat): break;
-        case (torch::kDouble): break;
+        // case (torch::kFloat): break;
+        // case (torch::kDouble): break;
         case (torch::kByte): break;
-        case (torch::kInt): break;
+        // case (torch::kInt): break;
         default: throw std::runtime_error(IMAGE_DTYPE_ERROR_MSG(torch::typeMetaToScalarType(image.dtype())));
     }
 }

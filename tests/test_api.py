@@ -6,7 +6,6 @@ from .utils.scoring import content_area_hausdorff, MISS_THRESHOLD
 
 from torchcontentarea import estimate_area_handcrafted, estimate_area_learned, get_points_handcrafted, get_points_learned, fit_area
 
-
 ESTIMATION_MEHTODS = [
     ("handcrafted cpu", estimate_area_handcrafted, "cpu"),
     ("learned cpu", estimate_area_learned, "cpu"),
