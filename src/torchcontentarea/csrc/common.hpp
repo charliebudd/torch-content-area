@@ -48,7 +48,6 @@ struct ConfidenceThresholds
 //     int width;
 // };
 
-
 // ImageFormat get_image_format(torch::Tensor image)
 // {
 //     bool is_rgb = image.size(-3) == 3;

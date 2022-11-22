@@ -43,9 +43,7 @@ void check_points(torch::Tensor &points)
         throw std::runtime_error(POINTS_NDIM_ERROR_MSG(points.dim()));
     }
 
-    bool batched = points.dim() == 3;
-
-    if (points.size(batched ? 1 : 0) != 3)
+    if (points.size(-2) != 3)
     {
         throw std::runtime_error(POINTS_CHANNEL_ERROR_MSG(points.size(1)));
     }
