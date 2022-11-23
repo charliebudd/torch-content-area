@@ -44,25 +44,25 @@ Performance is measured against the CholecECA subset of the [Endoscopic Content 
 <!-- performance stats start -->
 
 Performance Results (handcrafted cpu)...
-- Avg Time (Intel(R) Xeon(R) CPU E5-1650 v3 @ 3.50GHz): 2.768 ± 0.993ms
+- Avg Time (Intel(R) Xeon(R) CPU E5-1650 v3 @ 3.50GHz): 2.157 ± 0.632ms
 - Avg Error (Hausdorff Distance): 3.595
 - Miss Rate (Error > 15): 2.1%
 - Bad Miss Rate (Error > 25): 1.0%
 
 Performance Results (learned cpu)...
-- Avg Time (Intel(R) Xeon(R) CPU E5-1650 v3 @ 3.50GHz): 4.722 ± 1.489ms
-- Avg Error (Hausdorff Distance): 4.388
-- Miss Rate (Error > 15): 2.6%
+- Avg Time (Intel(R) Xeon(R) CPU E5-1650 v3 @ 3.50GHz): 4.764 ± 2.268ms
+- Avg Error (Hausdorff Distance): 4.560
+- Miss Rate (Error > 15): 2.5%
 - Bad Miss Rate (Error > 25): 1.4%
 
 Performance Results (handcrafted cuda)...
-- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.217 ± 0.110ms
-- Avg Error (Hausdorff Distance): 4.289
-- Miss Rate (Error > 15): 2.4%
-- Bad Miss Rate (Error > 25): 1.3%
+- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.164 ± 0.066ms
+- Avg Error (Hausdorff Distance): 3.618
+- Miss Rate (Error > 15): 2.1%
+- Bad Miss Rate (Error > 25): 1.1%
 
 Performance Results (learned cuda)...
-- Avg Time (NVIDIA GeForce GTX 980 Ti): 2.508 ± 1.293ms
+- Avg Time (NVIDIA GeForce GTX 980 Ti): 1.209 ± 0.640ms
 - Avg Error (Hausdorff Distance): 4.641
 - Miss Rate (Error > 15): 2.6%
 - Bad Miss Rate (Error > 25): 1.3% 
