@@ -75,17 +75,60 @@ class TestAPI(unittest.TestCase):
     # def test_small(self):
     #     pass
     
-    # def test_byte(self):
-    #     pass
+    def test_byte(self):
+        image, _, true_area = self.dataset[0]
+        image = image.to(dtype=torch.uint8)
+        for name, method, device in ESTIMATION_MEHTODS:
+            with self.subTest(name):
+                image = image.to(device)
+                result = method(image).tolist()
+                estimated_area = result[0:3]
+                error, _ = content_area_hausdorff(true_area, estimated_area, image.shape[-2:])
+                self.assertLess(error, MISS_THRESHOLD)
     
-    # def test_int(self):
-    #     pass
+    def test_int(self):
+        image, _, true_area = self.dataset[0]
+        image = image.to(dtype=torch.int)
+        for name, method, device in ESTIMATION_MEHTODS:
+            with self.subTest(name):
+                image = image.to(device)
+                result = method(image).tolist()
+                estimated_area = result[0:3]
+                error, _ = content_area_hausdorff(true_area, estimated_area, image.shape[-2:])
+                self.assertLess(error, MISS_THRESHOLD)
 
-    # def test_float(self):
-    #     pass
+    def test_long(self):
+        image, _, true_area = self.dataset[0]
+        image = image.to(dtype=torch.int64)
+        for name, method, device in ESTIMATION_MEHTODS:
+            with self.subTest(name):
+                image = image.to(device)
+                result = method(image).tolist()
+                estimated_area = result[0:3]
+                error, _ = content_area_hausdorff(true_area, estimated_area, image.shape[-2:])
+                self.assertLess(error, MISS_THRESHOLD)
+                
+    def test_float(self):
+        image, _, true_area = self.dataset[0]
+        image = image.to(dtype=torch.float) / 255
+        for name, method, device in ESTIMATION_MEHTODS:
+            with self.subTest(name):
+                image = image.to(device)
+                result = method(image).tolist()
+                estimated_area = result[0:3]
+                error, _ = content_area_hausdorff(true_area, estimated_area, image.shape[-2:])
+                self.assertLess(error, MISS_THRESHOLD)
     
-    # def test_double(self):
-    #     pass
+    def test_double(self):
+        image, _, true_area = self.dataset[0]
+        image = image.to(dtype=torch.double) / 255
+        for name, method, device in ESTIMATION_MEHTODS:
+            with self.subTest(name):
+                image = image.to(device)
+                result = method(image).tolist()
+                estimated_area = result[0:3]
+                error, _ = content_area_hausdorff(true_area, estimated_area, image.shape[-2:])
+                self.assertLess(error, MISS_THRESHOLD)
     
 
 if __name__ == '__main__':

@@ -6,31 +6,28 @@ namespace cpu
    // =========================================================================
     // General functionality...
 
-    float load_grayscale(const uint8* data, const int index, const int color_stride)
+    template<int c, typename T>
+    float load_element(const T* data, const int index, const int color_stride)
     {
-        return 0.2126f * data[index + 0 * color_stride] + 0.7152f * data[index + 1 * color_stride] + 0.0722f * data[index + 2 * color_stride];
+        float value = c == 1 ? data[index] : 0.2126f * data[index + 0 * color_stride] + 0.7152f * data[index + 1 * color_stride] + 0.0722f * data[index + 2 * color_stride];
+        return std::is_floating_point<T>::value ? 255 * value : value;
     }
 
-    float load_sobel_strip(const uint8* data, const int index, const int spatial_stride, const int color_stride, const int channel_count)
+    template<int c, typename T>
+    float load_sobel_strip(const T* data, const int index, const int spatial_stride, const int color_stride)
     {
-        if (channel_count == 3)
-        {
-            return  0.25 * load_grayscale(data, index - spatial_stride, color_stride) + 0.5 * load_grayscale(data, index, color_stride) + 0.25 * load_grayscale(data, index + spatial_stride, color_stride);
-        }
-        else
-        {
-            return  0.25 * data[index - spatial_stride] + 0.5 * data[index] + 0.25 * data[index + spatial_stride];
-        }
+        return  0.25 * load_element<c, T>(data, index - spatial_stride, color_stride) + 0.5 * load_element<c, T>(data, index, color_stride) + 0.25 * load_element<c, T>(data, index + spatial_stride, color_stride);
     }
 
     // =========================================================================
     // Main function...
 
-    void find_points(const uint8* images, const int batch_count, const int channel_count, const int image_height, const int image_width, const int strip_count, FeatureThresholds feature_thresholds, float* points_x, float* points_y, float* point_scores)
+    template<int c, typename T>
+    void find_points(const T* images, const int batch_count, const int image_height, const int image_width, const int strip_count, FeatureThresholds feature_thresholds, float* points_x, float* points_y, float* point_scores)
     {
         for (int batch_index = 0; batch_index < batch_count; ++batch_index)
         {
-            const uint8* image = images + batch_index * channel_count * image_height * image_width;
+            const T* image = images + batch_index * c * image_height * image_width;
 
             for (int strip_index = 0; strip_index < strip_count; ++strip_index)
             {
@@ -48,13 +45,13 @@ namespace cpu
                     {
                         int image_x = flip ? image_width - 1 - x : x;
 
-                        float intensity = channel_count == 3 ? load_grayscale(image, image_x + image_y * image_width, image_width * image_height) : image[image_x + image_y * image_width];
+                        float intensity = c == 3 ? load_element<c, T>(image, image_x + image_y * image_width, image_width * image_height) : image[image_x + image_y * image_width];
                         max_preceeding_intensity = max_preceeding_intensity < intensity ? intensity : max_preceeding_intensity;
 
-                        float left  = load_sobel_strip(image, (image_x - 1) + image_y * image_width, image_width, image_width * image_height, channel_count);
-                        float right = load_sobel_strip(image, (image_x + 1) + image_y * image_width, image_width, image_width * image_height, channel_count);
-                        float top = load_sobel_strip(image, image_x + (image_y - 1) * image_width, 1, image_width * image_height, channel_count);
-                        float bot = load_sobel_strip(image, image_x + (image_y + 1) * image_width, 1, image_width * image_height, channel_count);
+                        float left  = load_sobel_strip<c, T>(image, (image_x - 1) + image_y * image_width, image_width, image_width * image_height);
+                        float right = load_sobel_strip<c, T>(image, (image_x + 1) + image_y * image_width, image_width, image_width * image_height);
+                        float top = load_sobel_strip<c, T>(image, image_x + (image_y - 1) * image_width, 1, image_width * image_height);
+                        float bot = load_sobel_strip<c, T>(image, image_x + (image_y + 1) * image_width, 1, image_width * image_height);
 
                         float grad_x = right - left;
                         float grad_y = bot - top;
@@ -94,5 +91,10 @@ namespace cpu
                 }
             }
         }
+    }
+
+    void find_points(Image image, const int batch_count, const int channel_count, const int image_height, const int image_width, const int strip_count, FeatureThresholds feature_thresholds, float* points_x, float* points_y, float* point_scores)
+    {
+        FUNCTION_CALL_IMAGE_FORMAT(find_points, image, batch_count, image_height, image_width, strip_count, feature_thresholds, points_x, points_y, point_scores);
     }
 } 

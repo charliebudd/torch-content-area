@@ -13,10 +13,10 @@ from torchcontentarea import estimate_area_handcrafted, estimate_area_learned
 TEST_LOG = ""
 
 TEST_CASES = [
-    ("handcrafted cpu", estimate_area_handcrafted, "cpu"),
-    ("learned cpu", estimate_area_learned, "cpu"),
+    # ("handcrafted cpu", estimate_area_handcrafted, "cpu"),
+    # ("learned cpu", estimate_area_learned, "cpu"),
     ("handcrafted cuda", estimate_area_handcrafted, "cuda"),
-    ("learned cuda", estimate_area_learned, "cuda"),
+    # ("learned cuda", estimate_area_learned, "cuda"),
 ]
 
 class TestPerformance(unittest.TestCase):

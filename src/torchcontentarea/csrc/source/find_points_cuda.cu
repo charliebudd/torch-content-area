@@ -5,9 +5,12 @@ namespace cuda
 {
     // =========================================================================
     // General functionality...
-    __device__ float load_grayscale(const uint8* data, const int index, const int color_stride)
+
+    template<int c, typename T>
+    __device__ float load_element(const T* data, const int index, const int color_stride)
     {
-        return 0.2126f * data[index + 0 * color_stride] + 0.7152f * data[index + 1 * color_stride] + 0.0722f * data[index + 2 * color_stride];
+        float value = c == 1 ? data[index] : 0.2126f * data[index + 0 * color_stride] + 0.7152f * data[index + 1 * color_stride] + 0.0722f * data[index + 2 * color_stride];
+        return std::is_floating_point<T>::value ? 255 * value : value;
     }
 
     __device__ float sobel_filter(const float* data, const int index, const int x_stride, const int y_stride, float* x_grad, float* y_grad)
@@ -26,11 +29,12 @@ namespace cuda
     // =========================================================================
     // Kernels...
 
-    __global__ void find_points_kernel(const uint8* g_image_batch, float* g_edge_x_batch, float* g_edge_y_batch, float* g_edge_scores_batch, const int channel_count, const int image_width, const int image_height, const int strip_count, const FeatureThresholds feature_thresholds)
+    template<int c, typename T>
+    __global__ void find_points_kernel(const T* g_image_batch, float* g_edge_x_batch, float* g_edge_y_batch, float* g_edge_scores_batch, const int image_width, const int image_height, const int strip_count, const FeatureThresholds feature_thresholds)
     {
         constexpr int warp_size = 32;
 
-        const uint8* g_image = g_image_batch + blockIdx.z * channel_count * image_width * image_height;
+        const T* g_image = g_image_batch + blockIdx.z * c * image_width * image_height;
         float* g_edge_x = g_edge_x_batch + blockIdx.z * 3 * 2 * strip_count;
         float* g_edge_y = g_edge_y_batch + blockIdx.z * 3 * 2 * strip_count;
         float* g_edge_scores = g_edge_scores_batch + blockIdx.z * 3 * 2 * strip_count;
@@ -60,7 +64,7 @@ namespace cuda
         for (int y = 0; y < 3; y++)
         {
             int image_element_index = image_x + (strip_height + (y - 1)) * image_width;
-            s_image_strip[threadIdx.x + y * thread_count] = channel_count == 3 ? load_grayscale(g_image, image_element_index, image_width * image_height) : g_image[image_element_index];
+            s_image_strip[threadIdx.x + y * thread_count] = load_element<c, T>(g_image, image_element_index, image_width * image_height);
         }
         
         __syncthreads();
@@ -218,7 +222,7 @@ namespace cuda
     // =========================================================================
     // Main function...
     
-    void find_points(const uint8* image, const int batch_count, const int channel_count, const int image_height, const int image_width, const int strip_count, const FeatureThresholds feature_thresholds, float* points_x, float* points_y, float* point_scores)
+    void find_points(Image image, const int batch_count, const int channel_count, const int image_height, const int image_width, const int strip_count, const FeatureThresholds feature_thresholds, float* points_x, float* points_y, float* point_scores)
     {
         int half_width = image_width / 2;
         int warps = 1 + (half_width - 1) / 32;
@@ -226,8 +230,8 @@ namespace cuda
 
         dim3 grid(2, strip_count, batch_count);
         dim3 block(threads);
-        int shared_memmory = (3 * threads + 2 * warps) * sizeof(int);
+        int shared_memory = (3 * threads + 2 * warps) * sizeof(int);
 
-        find_points_kernel<<<grid, block, shared_memmory>>>(image, points_x, points_y, point_scores, channel_count, image_width, image_height, strip_count, feature_thresholds);
+        KERNEL_DISPATCH_IMAGE_FORMAT(find_points_kernel, ARG(grid, block, shared_memory), image, points_x, points_y, point_scores, image_width, image_height, strip_count, feature_thresholds);
     }
 }

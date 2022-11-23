@@ -26,10 +26,11 @@ void check_image_tensor(torch::Tensor &image)
 
     switch (torch::typeMetaToScalarType(image.dtype()))
     {
-        // case (torch::kFloat): break;
-        // case (torch::kDouble): break;
+        case (torch::kFloat): break;
+        case (torch::kDouble): break;
         case (torch::kByte): break;
-        // case (torch::kInt): break;
+        case (torch::kInt): break;
+        case (torch::kLong): break;
         default: throw std::runtime_error(IMAGE_DTYPE_ERROR_MSG(torch::typeMetaToScalarType(image.dtype())));
     }
 }
@@ -49,9 +50,25 @@ void check_points(torch::Tensor &points)
     }
 }
 
+Image get_image_data(torch::Tensor image)
+{
+    bool is_rgb = image.size(-3) == 3;
+    switch (torch::typeMetaToScalarType(image.dtype()))
+    {
+        case (torch::kFloat):  return Image(is_rgb ? ImageFormat::rgb_float  : ImageFormat::gray_float,  (void*)image.data_ptr<float   >());
+        case (torch::kDouble): return Image(is_rgb ? ImageFormat::rgb_double : ImageFormat::gray_double, (void*)image.data_ptr<double  >());
+        case (torch::kByte):   return Image(is_rgb ? ImageFormat::rgb_uint8  : ImageFormat::gray_uint8,  (void*)image.data_ptr<uint8   >());
+        case (torch::kInt):    return Image(is_rgb ? ImageFormat::rgb_int    : ImageFormat::gray_int,    (void*)image.data_ptr<int     >());
+        case (torch::kLong):   return Image(is_rgb ? ImageFormat::rgb_long   : ImageFormat::gray_long,   (void*)image.data_ptr<long int>());
+        default: throw std::runtime_error(IMAGE_DTYPE_ERROR_MSG(torch::typeMetaToScalarType(image.dtype())));
+    }
+}
+
 torch::Tensor estimate_area_handcrafted(torch::Tensor image, int strip_count, FeatureThresholds feature_thresholds, ConfidenceThresholds confidence_thresholds)
 {
     check_image_tensor(image);
+
+    Image image_data = get_image_data(image);
 
     bool batched = image.dim() == 4;
 
@@ -71,7 +88,7 @@ torch::Tensor estimate_area_handcrafted(torch::Tensor image, int strip_count, Fe
         float* points_y = temp_buffer + 1 * point_count;
         float* points_s = temp_buffer + 2 * point_count;
 
-        cpu::find_points(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
+        cpu::find_points(image_data, batch_count, channel_count, image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
        
         cpu::fit_circle(points_x, points_y, points_s, batch_count, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
         
@@ -85,7 +102,7 @@ torch::Tensor estimate_area_handcrafted(torch::Tensor image, int strip_count, Fe
         float* points_y = temp_buffer + 1 * point_count;
         float* points_s = temp_buffer + 2 * point_count;
 
-        cuda::find_points(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
+        cuda::find_points(image_data, batch_count, channel_count, image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
        
         cuda::fit_circle(points_x, points_y, points_s, batch_count, point_count, confidence_thresholds, image_height, image_width, result.data_ptr<float>());
 
@@ -98,6 +115,8 @@ torch::Tensor estimate_area_handcrafted(torch::Tensor image, int strip_count, Fe
 torch::Tensor estimate_area_learned(torch::Tensor image, int strip_count, torch::jit::Module model, int model_patch_size, ConfidenceThresholds confidence_thresholds)
 {
     check_image_tensor(image);
+    
+    Image image_data = get_image_data(image);
 
     bool batched = image.dim() == 4;
 
@@ -120,7 +139,7 @@ torch::Tensor estimate_area_learned(torch::Tensor image, int strip_count, torch:
         float* points_y = temp_buffer + 1 * point_count;
         float* points_s = temp_buffer + 2 * point_count;
         
-        cpu::make_strips(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
+        cpu::make_strips(image_data, batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
 
         torch::Tensor strip_scores = torch::sigmoid(model.forward(model_input).toTensor());
 
@@ -138,7 +157,7 @@ torch::Tensor estimate_area_learned(torch::Tensor image, int strip_count, torch:
         float* points_y = temp_buffer + 1 * point_count;
         float* points_s = temp_buffer + 2 * point_count;
         
-        cuda::make_strips(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
+        cuda::make_strips(image_data, batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
         
         torch::Tensor strip_scores = torch::sigmoid(model.forward(model_input).toTensor());
 
@@ -156,6 +175,8 @@ torch::Tensor get_points_handcrafted(torch::Tensor image, int strip_count, Featu
 {
     check_image_tensor(image);
 
+    Image image_data = get_image_data(image);
+    
     bool batched = image.dim() == 4;
 
     int batch_count = batched ? image.size(0) : 1;
@@ -174,11 +195,11 @@ torch::Tensor get_points_handcrafted(torch::Tensor image, int strip_count, Featu
 
     if (image.device().is_cpu())
     {
-        cpu::find_points(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
+        cpu::find_points(image_data, batch_count, channel_count, image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
     }
     else
     {
-        cuda::find_points(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
+        cuda::find_points(image_data, batch_count, channel_count, image_height, image_width, strip_count, feature_thresholds, points_x, points_y, points_s);
     }
 
     return result;
@@ -187,6 +208,8 @@ torch::Tensor get_points_handcrafted(torch::Tensor image, int strip_count, Featu
 torch::Tensor get_points_learned(torch::Tensor image, int strip_count, torch::jit::Module model, int model_patch_size)
 {
     check_image_tensor(image);
+
+    Image image_data = get_image_data(image);
 
     bool batched = image.dim() == 4;
 
@@ -209,7 +232,7 @@ torch::Tensor get_points_learned(torch::Tensor image, int strip_count, torch::ji
     
     if (image.device().is_cpu())
     {
-        cpu::make_strips(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
+        cpu::make_strips(image_data, batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
         
         torch::Tensor strip_scores = torch::sigmoid(model.forward(model_input).toTensor());
 
@@ -217,7 +240,7 @@ torch::Tensor get_points_learned(torch::Tensor image, int strip_count, torch::ji
     }
     else
     {
-        cuda::make_strips(image.data_ptr<uint8>(), batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
+        cuda::make_strips(image_data, batch_count, channel_count, image_height, image_width, strip_count, model_patch_size, strips.data_ptr<float>());
         
         torch::Tensor strip_scores = torch::sigmoid(model.forward(model_input).toTensor());
 

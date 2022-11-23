@@ -3,7 +3,8 @@
 
 namespace cpu
 {
-    void make_strips(const uint8* image, const int batch_count, const int channel_count, const int image_height, const int image_width, const int strip_count, const int strip_width, float* strips)
+    template<int c, typename T>
+    void make_strips(const T* image, const int batch_count, const int image_height, const int image_width, const int strip_count, const int strip_width, float* strips)
     {
         for (int batch_index = 0; batch_index < batch_count; ++batch_index)
         {
@@ -21,9 +22,22 @@ namespace cpu
                         int image_pixel_index = image_x + image_y * image_width;
                         int strip_pixel_index = strip_offset + image_x + strip_y * image_width;
 
-                        float r = (image[image_pixel_index + (channel_count == 3 ? 0 : 0) * image_width * image_height + batch_index * 3 * image_width * image_height]/255.0f - 0.3441f) / 0.2381f;
-                        float g = (image[image_pixel_index + (channel_count == 3 ? 1 : 0) * image_width * image_height + batch_index * 3 * image_width * image_height]/255.0f - 0.2251f) / 0.1994f;
-                        float b = (image[image_pixel_index + (channel_count == 3 ? 2 : 0) * image_width * image_height + batch_index * 3 * image_width * image_height]/255.0f - 0.2203f) / 0.1939f;
+                        float r, g, b;
+                        float norm = std::is_floating_point<T>::value ? 1.0f : 255.0f;
+
+                        if (c == 3)
+                        {
+                            r = (image[image_pixel_index + 0 * image_width * image_height + batch_index * 3 * image_width * image_height]/norm - 0.3441f) / 0.2381f;
+                            g = (image[image_pixel_index + 1 * image_width * image_height + batch_index * 3 * image_width * image_height]/norm - 0.2251f) / 0.1994f;
+                            b = (image[image_pixel_index + 2 * image_width * image_height + batch_index * 3 * image_width * image_height]/norm - 0.2203f) / 0.1939f;
+                        }
+                        else
+                        {
+                            r = (image[image_pixel_index + batch_index * 3 * image_width * image_height]/norm - 0.3441f) / 0.2381f;
+                            g = (image[image_pixel_index + batch_index * 3 * image_width * image_height]/norm - 0.2251f) / 0.1994f;
+                            b = (image[image_pixel_index + batch_index * 3 * image_width * image_height]/norm - 0.2203f) / 0.1939f;
+                        }
+
                         float x = ((float)image_x / image_width) - 0.5f;
                         float y = ((float)image_y / image_height) - 0.5f;
 
@@ -36,5 +50,11 @@ namespace cpu
                 }
             }
         }
+    }
+
+    
+    void make_strips(Image image, const int batch_count, const int channel_count, const int image_height, const int image_width, const int strip_count, const int strip_width, float* strips)
+    {
+        FUNCTION_CALL_IMAGE_FORMAT(make_strips, image, batch_count, image_height, image_width, strip_count, strip_width, strips);
     }
 }
