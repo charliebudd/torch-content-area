@@ -1,4 +1,5 @@
 #pragma once
+#include <type_traits>
 
 #define MAX_POINT_COUNT 32
 #define DISCARD_BORDER 3
@@ -10,6 +11,8 @@
 #define RANSAC_ATTEMPTS 32
 #define RANSAC_ITERATIONS 3
 #define RANSAC_INLIER_THRESHOLD 3
+
+typedef unsigned char uint8;
 
 struct FeatureThresholds
 {
@@ -24,39 +27,55 @@ struct ConfidenceThresholds
     float circle;
 };
 
-enum ImageFormat {
+enum ImageFormat 
+{
     rgb_float,
     rgb_double,
     rgb_uint8,
     rgb_int,
+    rgb_long,
     gray_float,
     gray_double,
     gray_uint8,  
     gray_int,
+    gray_long,
 };
 
-typedef unsigned char uint8;
+struct Image
+{
+    Image(ImageFormat format, const void* data) : format(format), data(data) {}
 
-#define DISPATCH_IMAGE_FORMAT(FORMAT, FUNCTION, IMAGE, ...)                                     \
-    switch(FORMAT)                                                                              \
-    {                                                                                           \
-        case(rgb_float):   FUNCTION<float,  3>(IMAGE.data_ptr<float >(), __VA_ARGS__); break;   \
-        case(rgb_double):  FUNCTION<double, 3>(IMAGE.data_ptr<double>(), __VA_ARGS__); break;   \
-        case(rgb_uint8):   FUNCTION<uint8,  3>(IMAGE.data_ptr<uint8 >(), __VA_ARGS__); break;   \
-        case(rgb_int):     FUNCTION<int,    3>(IMAGE.data_ptr<int   >(), __VA_ARGS__); break;   \
-        case(gray_float):  FUNCTION<float,  1>(IMAGE.data_ptr<float >(), __VA_ARGS__); break;   \
-        case(gray_double): FUNCTION<double, 1>(IMAGE.data_ptr<double>(), __VA_ARGS__); break;   \
-        case(gray_uint8):  FUNCTION<uint8,  1>(IMAGE.data_ptr<uint8 >(), __VA_ARGS__); break;   \
-        case(gray_int):    FUNCTION<int,    1>(IMAGE.data_ptr<int   >(), __VA_ARGS__); break;   \
+    ImageFormat format;
+    const void* data;
+};
+
+#define ARG(...) __VA_ARGS__
+#define KERNEL_DISPATCH_IMAGE_FORMAT(FUNCTION, DISPATCH_ARGS, IMAGE, ...)                                               \
+    switch(IMAGE.format)                                                                                                \
+    {                                                                                                                   \
+        case(rgb_float):   FUNCTION<3, float   ><<<DISPATCH_ARGS>>>((const float*   )IMAGE.data, __VA_ARGS__); break;   \
+        case(rgb_double):  FUNCTION<3, double  ><<<DISPATCH_ARGS>>>((const double*  )IMAGE.data, __VA_ARGS__); break;   \
+        case(rgb_uint8):   FUNCTION<3, uint8   ><<<DISPATCH_ARGS>>>((const uint8*   )IMAGE.data, __VA_ARGS__); break;   \
+        case(rgb_int):     FUNCTION<3, int     ><<<DISPATCH_ARGS>>>((const int*     )IMAGE.data, __VA_ARGS__); break;   \
+        case(rgb_long):    FUNCTION<3, long int><<<DISPATCH_ARGS>>>((const long int*)IMAGE.data, __VA_ARGS__); break;   \
+        case(gray_float):  FUNCTION<1, float   ><<<DISPATCH_ARGS>>>((const float*   )IMAGE.data, __VA_ARGS__); break;   \
+        case(gray_double): FUNCTION<1, double  ><<<DISPATCH_ARGS>>>((const double*  )IMAGE.data, __VA_ARGS__); break;   \
+        case(gray_uint8):  FUNCTION<1, uint8   ><<<DISPATCH_ARGS>>>((const uint8*   )IMAGE.data, __VA_ARGS__); break;   \
+        case(gray_int):    FUNCTION<1, int     ><<<DISPATCH_ARGS>>>((const int*     )IMAGE.data, __VA_ARGS__); break;   \
+        case(gray_long):   FUNCTION<1, long int><<<DISPATCH_ARGS>>>((const long int*)IMAGE.data, __VA_ARGS__); break;   \
     }
 
-#define INSTANTIATE_IMAGE_FORMAT(FUNCTION, ...)  \
-    template void FUNCTION<float,  3>(const float*  image, __VA_ARGS__);     \
-    template void FUNCTION<double, 3>(const double* image, __VA_ARGS__);     \
-    template void FUNCTION<uint8,  3>(const uint8*  image, __VA_ARGS__);     \
-    template void FUNCTION<int,    3>(const int*    image, __VA_ARGS__);     \
-    template void FUNCTION<float,  1>(const float*  image, __VA_ARGS__);     \
-    template void FUNCTION<double, 1>(const double* image, __VA_ARGS__);     \
-    template void FUNCTION<uint8,  1>(const uint8*  image, __VA_ARGS__);     \
-    template void FUNCTION<int,    1>(const int*    image, __VA_ARGS__);     
-    
+#define FUNCTION_CALL_IMAGE_FORMAT(FUNCTION, IMAGE, ...)                                             \
+    switch(IMAGE.format)                                                                             \
+    {                                                                                                \
+        case(rgb_float):   FUNCTION<3, float   >((const float*   )IMAGE.data, __VA_ARGS__); break;   \
+        case(rgb_double):  FUNCTION<3, double  >((const double*  )IMAGE.data, __VA_ARGS__); break;   \
+        case(rgb_uint8):   FUNCTION<3, uint8   >((const uint8*   )IMAGE.data, __VA_ARGS__); break;   \
+        case(rgb_int):     FUNCTION<3, int     >((const int*     )IMAGE.data, __VA_ARGS__); break;   \
+        case(rgb_long):    FUNCTION<3, long int>((const long int*)IMAGE.data, __VA_ARGS__); break;   \
+        case(gray_float):  FUNCTION<1, float   >((const float*   )IMAGE.data, __VA_ARGS__); break;   \
+        case(gray_double): FUNCTION<1, double  >((const double*  )IMAGE.data, __VA_ARGS__); break;   \
+        case(gray_uint8):  FUNCTION<1, uint8   >((const uint8*   )IMAGE.data, __VA_ARGS__); break;   \
+        case(gray_int):    FUNCTION<1, int     >((const int*     )IMAGE.data, __VA_ARGS__); break;   \
+        case(gray_long):   FUNCTION<1, long int>((const long int*)IMAGE.data, __VA_ARGS__); break;   \
+    }

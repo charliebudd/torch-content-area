@@ -159,89 +159,93 @@ namespace cpu
     // =========================================================================
     // Main function...
 
-    void fit_circle(const int* points_x, const int* points_y, const float* points_score, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width, float* results)
+    void fit_circle(const float* points_x, const float* points_y, const float* points_score, const int batch_count, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width, float* results)
     {
         int* compacted_points = (int*)malloc(3 * point_count * sizeof(int));
         int* compacted_points_x = compacted_points + 0 * point_count;
         int* compacted_points_y = compacted_points + 1 * point_count;
         float* compacted_points_s = (float*)compacted_points + 2 * point_count;
 
-        // Point compaction...
-        int real_point_count = 0;
-        for (int i = 0; i < point_count; ++i)
+
+        for (int batch_index = 0; batch_index < batch_count; ++batch_index)
         {
-            if (points_score[i] > confidence_thresholds.edge)
+            // Point compaction...
+            int real_point_count = 0;
+            for (int i = 0; i < point_count; ++i)
             {
-                compacted_points_x[real_point_count] = points_x[i]; 
-                compacted_points_y[real_point_count] = points_y[i]; 
-                compacted_points_s[real_point_count] = points_score[i]; 
-                real_point_count += 1;
-            }
-        }
-    
-        results[0] = 0.0f;
-        results[1] = 0.0f;
-        results[2] = 0.0f;
-        results[3] = 0.0f;
-
-        // Early out...
-        if (real_point_count < 3)
-        {
-            return;
-        }
-
-        // Ransac attempts...
-        for (int ransac_attempt = 0; ransac_attempt < RANSAC_ATTEMPTS; ++ransac_attempt)
-        {
-            int inlier_count = 3;
-            int inliers[MAX_POINT_COUNT];
-            rand_triplet(ransac_attempt * 42342, RANSAC_ATTEMPTS, real_point_count, inliers);
-
-            float circle_x, circle_y, circle_r;
-            float circle_score = 0.0f;
-
-            for (int i = 0; i < RANSAC_ITERATIONS; i++)
-            {
-                get_circle(inlier_count, inliers, compacted_points_x, compacted_points_y, &circle_x, &circle_y, &circle_r);
-                
-                inlier_count = 0;
-                circle_score = 0.0f;
-
-                for (int point_index = 0; point_index < real_point_count; point_index++)
+                if (points_score[i] > confidence_thresholds.edge)
                 {
-                    int edge_x = compacted_points_x[point_index];
-                    int edge_y = compacted_points_y[point_index];
-                    float edge_score = compacted_points_s[point_index];
+                    compacted_points_x[real_point_count] = points_x[i + batch_index * 3 * point_count]; 
+                    compacted_points_y[real_point_count] = points_y[i + batch_index * 3 * point_count]; 
+                    compacted_points_s[real_point_count] = points_score[i + batch_index * 3 * point_count]; 
+                    real_point_count += 1;
+                }
+            }
+        
+            results[0 + batch_index * 4] = 0.0f;
+            results[1 + batch_index * 4] = 0.0f;
+            results[2 + batch_index * 4] = 0.0f;
+            results[3 + batch_index * 4] = 0.0f;
 
-                    float delta_x = circle_x - edge_x;
-                    float delta_y = circle_y - edge_y;
+            // Early out...
+            if (real_point_count < 3)
+            {
+                return;
+            }
 
-                    float delta = std::sqrt(delta_x * delta_x + delta_y * delta_y);
-                    float error = std::abs(circle_r - delta);
+            // Ransac attempts...
+            for (int ransac_attempt = 0; ransac_attempt < RANSAC_ATTEMPTS; ++ransac_attempt)
+            {
+                int inlier_count = 3;
+                int inliers[MAX_POINT_COUNT];
+                rand_triplet(ransac_attempt * 42342, RANSAC_ATTEMPTS, real_point_count, inliers);
 
-                    if (error < RANSAC_INLIER_THRESHOLD)
+                float circle_x, circle_y, circle_r;
+                float circle_score = 0.0f;
+
+                for (int i = 0; i < RANSAC_ITERATIONS; i++)
+                {
+                    get_circle(inlier_count, inliers, compacted_points_x, compacted_points_y, &circle_x, &circle_y, &circle_r);
+                    
+                    inlier_count = 0;
+                    circle_score = 0.0f;
+
+                    for (int point_index = 0; point_index < real_point_count; point_index++)
                     {
-                        circle_score += edge_score;
+                        int edge_x = compacted_points_x[point_index];
+                        int edge_y = compacted_points_y[point_index];
+                        float edge_score = compacted_points_s[point_index];
 
-                        inliers[inlier_count] = point_index;
-                        inlier_count++;
+                        float delta_x = circle_x - edge_x;
+                        float delta_y = circle_y - edge_y;
+
+                        float delta = std::sqrt(delta_x * delta_x + delta_y * delta_y);
+                        float error = std::abs(circle_r - delta);
+
+                        if (error < RANSAC_INLIER_THRESHOLD)
+                        {
+                            circle_score += edge_score;
+
+                            inliers[inlier_count] = point_index;
+                            inlier_count++;
+                        }
                     }
+
+                    circle_score /= point_count;
                 }
 
-                circle_score /= point_count;
-            }
+                bool circle_valid = check_circle(circle_x, circle_y, circle_r, image_width, image_height);
 
-            bool circle_valid = check_circle(circle_x, circle_y, circle_r, image_width, image_height);
-
-            if (circle_valid && circle_score > results[3])
-            {
-                results[0] = circle_x;
-                results[1] = circle_y;
-                results[2] = circle_r;
-                results[3] = circle_score;
+                if (circle_valid && circle_score > results[3 + batch_index * 4])
+                {
+                    results[0 + batch_index * 4] = circle_x;
+                    results[1 + batch_index * 4] = circle_y;
+                    results[2 + batch_index * 4] = circle_r;
+                    results[3 + batch_index * 4] = circle_score;
+                }
             }
         }
-        
+
         free(compacted_points);
     }
 }

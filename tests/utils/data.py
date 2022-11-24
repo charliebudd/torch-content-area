@@ -16,7 +16,7 @@ def meshgrid(tensors):
 
 class TestDataLoader(DataLoader):
     def __init__(self, dataset, shuffle=False) -> None:
-        super().__init__(dataset=dataset, batch_size=None, num_workers=10, pin_memory=True, shuffle=shuffle)
+        super().__init__(dataset=dataset, batch_size=None, pin_memory=True, shuffle=shuffle)
 
 
 class TestDataset(Dataset):
@@ -30,6 +30,7 @@ class TestDataset(Dataset):
     def __getitem__(self, index):
         image, area = self.dataset[index]
         img = torch.from_numpy(np.array(image)).permute(2, 0, 1)
+        area = None if area == None else torch.from_numpy(np.array(area))
         return img, area
 
 
