@@ -43,28 +43,11 @@ area = fit_area(points, image.shape[2:4])
 ## Performance
 Performance is measured against the CholecECA subset of the [Endoscopic Content Area (ECA) dataset](https://github.com/charliebudd/eca-dataset).
 <!-- performance stats start -->
-Performance Results (handcrafted cpu)...
-- Avg Time (Intel(R) Xeon(R) CPU E5-1650 v3 @ 3.50GHz): 2.157 ± 0.632ms
-- Avg Error (Hausdorff Distance): 3.595
-- Miss Rate (Error > 15): 2.1%
-- Bad Miss Rate (Error > 25): 1.0%
-
-Performance Results (learned cpu)...
-- Avg Time (Intel(R) Xeon(R) CPU E5-1650 v3 @ 3.50GHz): 4.764 ± 2.268ms
-- Avg Error (Hausdorff Distance): 4.560
-- Miss Rate (Error > 15): 2.5%
-- Bad Miss Rate (Error > 25): 1.4%
 
 Performance Results (handcrafted cuda)...
-- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.164 ± 0.066ms
+- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.296 ± 0.043ms
 - Avg Error (Hausdorff Distance): 3.618
 - Miss Rate (Error > 15): 2.1%
-- Bad Miss Rate (Error > 25): 1.1%
-
-Performance Results (learned cuda)...
-- Avg Time (NVIDIA GeForce GTX 980 Ti): 1.209 ± 0.640ms
-- Avg Error (Hausdorff Distance): 4.641
-- Miss Rate (Error > 15): 2.6%
-- Bad Miss Rate (Error > 25): 1.3%
+- Bad Miss Rate (Error > 25): 1.1% 
 <!-- performance stats end -->
 
