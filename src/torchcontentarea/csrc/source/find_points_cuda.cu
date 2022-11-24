@@ -228,6 +228,8 @@ namespace cuda
         int warps = 1 + (half_width - 1) / 32;
         int threads = warps * 32;
 
+        threads = threads > 1024 ? 1024 : threads;
+
         dim3 grid(2, strip_count, batch_count);
         dim3 block(threads);
         int shared_memory = (3 * threads + 2 * warps) * sizeof(int);

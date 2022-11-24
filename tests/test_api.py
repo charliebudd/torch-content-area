@@ -69,11 +69,27 @@ class TestAPI(unittest.TestCase):
                 self.assertLess(error, MISS_THRESHOLD)
     
     
-    # def test_large(self):
-    #     pass
+    def test_large(self):
+        image, _, true_area = self.dataset[0]
+        for name, method, device in ESTIMATION_MEHTODS:
+            with self.subTest(name):
+                image = image.to(device)
+                result = method(image).tolist()
+                estimated_area = result[0:3]
+                error, _ = content_area_hausdorff(true_area, estimated_area, image.shape[-2:])
+                self.assertLess(error, MISS_THRESHOLD)
     
-    # def test_small(self):
-    #     pass
+    def test_small(self):
+        image, _, true_area = self.dataset[0]
+        image = image[:, ::4, ::4]
+        true_area = tuple(map(lambda x: x/4, true_area))
+        for name, method, device in ESTIMATION_MEHTODS:
+            with self.subTest(name):
+                image = image.to(device)
+                result = method(image).tolist()
+                estimated_area = result[0:3]
+                error, _ = content_area_hausdorff(true_area, estimated_area, image.shape[-2:])
+                self.assertLess(error, MISS_THRESHOLD)
     
     def test_byte(self):
         image, _, true_area = self.dataset[0]
