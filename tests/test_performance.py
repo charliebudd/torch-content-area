@@ -13,10 +13,10 @@ from torchcontentarea import estimate_area_handcrafted, estimate_area_learned
 TEST_LOG = ""
 
 TEST_CASES = [
-    ("handcrafted cpu", estimate_area_handcrafted, "cpu"),
-    ("learned cpu", estimate_area_learned, "cpu"),
+    # ("handcrafted cpu", estimate_area_handcrafted, "cpu"),
+    # ("learned cpu", estimate_area_learned, "cpu"),
     ("handcrafted cuda", estimate_area_handcrafted, "cuda"),
-    ("learned cuda", estimate_area_learned, "cuda"),
+    # ("learned cuda", estimate_area_learned, "cuda"),
 ]
 
 class TestPerformance(unittest.TestCase):
@@ -33,24 +33,23 @@ class TestPerformance(unittest.TestCase):
 
         for img, area in self.dataloader:
 
-            img = img.unsqueeze(0)
-
             for i, (name, method, device) in enumerate(TEST_CASES):
 
                 img = img.to(device=device)
 
                 with Timer() as timer:
-                    infered_area = method(img)
+                    result = method(img)
                 time = timer.time
 
-                infered_area = infered_area[0].cpu().numpy()
+                result = result.tolist()
+                infered_area, confidence = result[:3], result[3]
 
-                infered_area, confidence = tuple(infered_area[0:3]), infered_area[-1]
                 infered_area = tuple(map(int, infered_area))
+
                 if confidence < 0.06:
                     infered_area = None
 
-                error, _ = content_area_hausdorff(area, infered_area, img.shape[2:4])
+                error, _ = content_area_hausdorff(area, infered_area, img.shape[-2:])
 
                 errors[i].append(error)
                 times[i].append(time)

@@ -28,8 +28,9 @@ pip install git+https://github.com/charliebudd/torch-content-area
 from torchvision.io import read_image
 from torchcontentarea import estimate_area, get_points, fit_area
 
-# Image in NCHW format, byte/uint8 type is expected
-image = read_image("my_image.png").unsqueeze(0)
+# Grayscale or RGB image in NCHW or CHW format. Values should be normalised 
+# between 0-1 for floating point types and 0-255 for integer types.
+image = read_image("my_image.png")
 
 # Either directly estimate area from image...
 area = estimate_area(image, strip_count=16)
@@ -43,28 +44,10 @@ area = fit_area(points, image.shape[2:4])
 Performance is measured against the CholecECA subset of the [Endoscopic Content Area (ECA) dataset](https://github.com/charliebudd/eca-dataset).
 <!-- performance stats start -->
 
-Performance Results (handcrafted cpu)...
-- Avg Time (Intel(R) Xeon(R) CPU E5-1650 v3 @ 3.50GHz): 2.768 ± 0.993ms
-- Avg Error (Hausdorff Distance): 3.595
-- Miss Rate (Error > 15): 2.1%
-- Bad Miss Rate (Error > 25): 1.0%
-
-Performance Results (learned cpu)...
-- Avg Time (Intel(R) Xeon(R) CPU E5-1650 v3 @ 3.50GHz): 4.722 ± 1.489ms
-- Avg Error (Hausdorff Distance): 4.388
-- Miss Rate (Error > 15): 2.6%
-- Bad Miss Rate (Error > 25): 1.4%
-
 Performance Results (handcrafted cuda)...
-- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.217 ± 0.110ms
-- Avg Error (Hausdorff Distance): 4.289
-- Miss Rate (Error > 15): 2.4%
-- Bad Miss Rate (Error > 25): 1.3%
-
-Performance Results (learned cuda)...
-- Avg Time (NVIDIA GeForce GTX 980 Ti): 2.508 ± 1.293ms
-- Avg Error (Hausdorff Distance): 4.641
-- Miss Rate (Error > 15): 2.6%
-- Bad Miss Rate (Error > 25): 1.3% 
+- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.296 ± 0.043ms
+- Avg Error (Hausdorff Distance): 3.618
+- Miss Rate (Error > 15): 2.1%
+- Bad Miss Rate (Error > 25): 1.1% 
 <!-- performance stats end -->
 
