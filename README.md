@@ -39,6 +39,10 @@ area = estimate_area(image, strip_count=16)
 # ...or get the set of points and then fit the area.
 points = get_points(image, strip_count=16)
 area = fit_area(points, image.shape[2:4])
+
+# Utility function are included to help handle the content area...
+area_mask = draw_area(area, image)
+cropped_image = crop_area(area, image)
 ```
 
 ## Performance
