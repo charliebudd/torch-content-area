@@ -45,7 +45,7 @@ Performance is measured against the CholecECA subset of the [Endoscopic Content 
 <!-- performance stats start -->
 
 Performance Results (handcrafted cuda)...
-- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.296 ± 0.043ms
+- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.305 ± 0.048ms
 - Avg Error (Hausdorff Distance): 3.618
 - Miss Rate (Error > 15): 2.1%
 - Bad Miss Rate (Error > 25): 1.1% 
