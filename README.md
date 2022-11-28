@@ -27,6 +27,7 @@ pip install git+https://github.com/charliebudd/torch-content-area
 ```python
 from torchvision.io import read_image
 from torchcontentarea import estimate_area, get_points, fit_area
+from torchcontentarea.utils import draw_area, crop_area
 
 # Grayscale or RGB image in NCHW or CHW format. Values should be normalised 
 # between 0-1 for floating point types and 0-255 for integer types.
@@ -45,7 +46,7 @@ Performance is measured against the CholecECA subset of the [Endoscopic Content 
 <!-- performance stats start -->
 
 Performance Results (handcrafted cuda)...
-- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.296 ± 0.043ms
+- Avg Time (NVIDIA GeForce GTX 980 Ti): 0.299 ± 0.042ms
 - Avg Error (Hausdorff Distance): 3.618
 - Miss Rate (Error > 15): 2.1%
 - Bad Miss Rate (Error > 25): 1.1% 

@@ -94,4 +94,4 @@ jobs:
       - name: Run Tests
         run: |
           . ../.venv-${{ matrix.python-version }}-${{ matrix.pytorch-version }}-${{ matrix.cuda-version }}/bin/activate
-          python -m unittest tests.test_api
+          python -m unittest tests.test_api tests.test_utils
