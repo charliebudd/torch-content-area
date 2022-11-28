@@ -2,15 +2,21 @@ import torch
 from math import sqrt, floor
 
 def draw_area(area, image, bias=0):
-    image_size = image.shape[-2:]
-    device = image.device
+    """
+    Draws a binary mask with 1 inside the content area and 0 outside.
+    """
+    image_size, device = image.shape[-2:], image.device
+    
     mesh = torch.meshgrid(torch.arange(0, image_size[0], device=device), torch.arange(0, image_size[1], device=device))
     dist = torch.sqrt((mesh[0] - area[1])**2 + (mesh[1] - area[0])**2)
     mask = torch.where(dist < (area[2] + bias), 1, 0).to(dtype=torch.uint8)
+    
     return mask
 
 def get_crop(area, image_size, aspect_ratio=None, bias=0):
-
+    """
+    Returns the optimal crop (top, bottom, left, right) to remove areas outside the content area.
+    """
     i_h, i_w = image_size
     a_x, a_y, a_r = area[:3]
 
@@ -41,9 +47,11 @@ def get_crop(area, image_size, aspect_ratio=None, bias=0):
     return crop
 
 def crop_area(area, image, aspect_ratio=None, bias=0):
-
+    """
+    Crops the image to remove areas outside the content area.
+    """
     crop = get_crop(area, image.shape[-2:], aspect_ratio, bias)
     
     cropped_image = image[..., crop[0]:crop[1], crop[2]:crop[3]]
-
+    
     return cropped_image

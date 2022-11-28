@@ -27,6 +27,7 @@ pip install git+https://github.com/charliebudd/torch-content-area
 ```python
 from torchvision.io import read_image
 from torchcontentarea import estimate_area, get_points, fit_area
+from torchcontentarea.utils import draw_area, crop_area
 
 # Grayscale or RGB image in NCHW or CHW format. Values should be normalised 
 # between 0-1 for floating point types and 0-255 for integer types.
