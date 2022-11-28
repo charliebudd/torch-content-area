@@ -1,21 +1,18 @@
 import torch
 from math import sqrt, floor
 
-def draw_area(area, image_size, bias=0):
-
-    axes = torch.arange(0, image_size[0]), torch.arange(0, image_size[1])
-    mesh = torch.meshgrid(axes)
-
-    dist = torch.sqrt((mesh[0] - area[0])**2 + (mesh[1] - area[1])**2)
-
+def draw_area(area, image, bias=0):
+    image_size = image.shape[-2:]
+    device = image.device
+    mesh = torch.meshgrid(torch.arange(0, image_size[0], device=device), torch.arange(0, image_size[1], device=device))
+    dist = torch.sqrt((mesh[0] - area[1])**2 + (mesh[1] - area[0])**2)
     mask = torch.where(dist < (area[2] + bias), 1, 0).to(dtype=torch.uint8)
-
     return mask
 
 def get_crop(area, image_size, aspect_ratio=None, bias=0):
 
-    i_w, i_h = image_size
-    a_x, a_y, a_r = area
+    i_h, i_w = image_size
+    a_x, a_y, a_r = area[:3]
 
     if aspect_ratio == None:
         aspect_ratio = i_w / i_h
@@ -39,14 +36,14 @@ def get_crop(area, image_size, aspect_ratio=None, bias=0):
     x = int(left + (right - left) / 2 - w / 2)
     y = int(top + (bottom - top) / 2 - h / 2)
 
-    crop = x, y, x+w, y+h
+    crop = y, y+h, x, x+w
 
     return crop
 
 def crop_area(area, image, aspect_ratio=None, bias=0):
 
-    crop = get_crop(area, image.shape[0:1], aspect_ratio, bias)
+    crop = get_crop(area, image.shape[-2:], aspect_ratio, bias)
     
-    cropped_image = image[crop[0]:crop[2], crop[1]:crop[3]]
+    cropped_image = image[..., crop[0]:crop[1], crop[2]:crop[3]]
 
     return cropped_image
