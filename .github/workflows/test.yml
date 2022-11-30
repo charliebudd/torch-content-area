@@ -11,13 +11,13 @@ on:
         default: final-wheels
       python-versions:
         type: string
-        default: "[3.6, 3.7, 3.8, 3.9]"
+        default: "[3.7, 3.8, 3.9, '3.10', 3.11]"
       pytorch-versions:
         type: string
-        default: "[1.9, '1.10', 1.11, 1.12]"
+        default: "['1.10', 1.11, 1.12, 1.13]"
       cuda-versions:
         type: string
-        default: "[10.2, 11.3, 11.6]"
+        default: "[10.2, 11.3, 11.6, 11.7]"
 
 jobs:
   test-release:
@@ -30,18 +30,28 @@ jobs:
         pytorch-version: ${{ fromJson(inputs.pytorch-versions) }}
         cuda-version: ${{ fromJson(inputs.cuda-versions) }}
         exclude:
-          - pytorch-version: 1.9
-            cuda-version: 11.3
-          - python-version: 3.6
-            pytorch-version: 1.11
-          - python-version: 3.6
-            pytorch-version: 1.12
-          - pytorch-version: 1.9
-            cuda-version: 11.6 
           - pytorch-version: '1.10'
-            cuda-version: 11.6 
+            python-version: '3.10'
+          - pytorch-version: '1.10'
+            python-version: 3.11
+          - pytorch-version: '1.10'
+            cuda-version: 11.6
+          - pytorch-version: '1.10'
+            cuda-version: 11.7
           - pytorch-version: 1.11
-            cuda-version: 11.6 
+            python-version: 3.11
+          - pytorch-version: 1.11
+            cuda-version: 11.6
+          - pytorch-version: 1.11
+            cuda-version: 11.7
+          - pytorch-version: 1.12
+            python-version: 3.11
+          - pytorch-version: 1.12
+            cuda-version: 11.7
+          - pytorch-version: 1.13
+            cuda-version: 10.2
+          - pytorch-version: 1.13
+            cuda-version: 11.3
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
