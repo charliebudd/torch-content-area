@@ -25,6 +25,7 @@ setup(
     author_email="charles.budd@kcl.ac.uk",
     url="https://github.com/charliebudd/torch-content-area",
     license="MIT",
+    setup_requires=["torch<=1.13"],
     packages=["torchcontentarea"],
     package_dir={"":"src"},
     package_data={'torchcontentarea': ['models/*.pt']},
