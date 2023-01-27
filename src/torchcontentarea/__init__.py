@@ -4,5 +4,7 @@ from .extension_wrapper import estimate_area_handcrafted as estimate_area, estim
 from .extension_wrapper import get_points_handcrafted as get_points, get_points_handcrafted, get_points_learned
 from .extension_wrapper import fit_area
 
+from .utils import draw_area, get_crop, crop_area
+
 from . import _version
 __version__ = _version.get_versions()['version']

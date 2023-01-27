@@ -68,9 +68,10 @@ class TestAPI(unittest.TestCase):
                 error, _ = content_area_hausdorff(true_area, estimated_area, image.shape[-2:])
                 self.assertLess(error, MISS_THRESHOLD)
     
-    
     def test_large(self):
         image, _, true_area = self.dataset[0]
+        image = torch.nn.functional.interpolate(image.unsqueeze(0).to(dtype=torch.float), scale_factor=4, mode='bilinear')[0].to(dtype=torch.uint8)
+        true_area = tuple(map(lambda x: x*4, true_area))
         for name, method, device in ESTIMATION_MEHTODS:
             with self.subTest(name):
                 image = image.to(device)
