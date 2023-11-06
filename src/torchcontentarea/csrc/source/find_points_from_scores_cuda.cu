@@ -63,7 +63,7 @@ namespace cuda
             best_edge_x = s_cross_warp_operation_buffer[lane_index];
             best_edge_score = s_cross_warp_operation_buffer_2[lane_index];
 
-            int next_power_two = pow(2, ceil(log(warp_count)/log(2)));
+            int next_power_two = pow(2, ceil(logf(warp_count)/logf(2)));
 
             #pragma unroll
             for (int offset = next_power_two >> 1 ; offset > 0; offset >>= 1)
