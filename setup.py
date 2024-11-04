@@ -15,19 +15,38 @@ compile_args = {
     'nvcc': ['-O3']
 }
 
-setup(
-    name="torchcontentarea",
-    version=versioneer.get_version(),
-    description="A PyTorch tool kit for estimating the content area in endoscopic footage.",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    author="Charlie Budd",
-    author_email="charles.budd@kcl.ac.uk",
-    url="https://github.com/charliebudd/torch-content-area",
-    license="MIT",
-    packages=["torchcontentarea"],
-    package_dir={"":"src"},
-    package_data={'torchcontentarea': ['models/*.pt']},
-    ext_modules=[cpp_extension.CUDAExtension("torchcontentareaext", ext_source_files, extra_compile_args=compile_args)],
-    cmdclass=versioneer.get_cmdclass({"build_ext": cpp_extension.BuildExtension})
-)
+try:
+    setup(
+        name="torchcontentarea",
+        version=versioneer.get_version(),
+        description="A PyTorch tool kit for estimating the content area in endoscopic footage.",
+        long_description=long_description,
+        long_description_content_type="text/markdown",
+        author="Charlie Budd",
+        author_email="charles.budd@kcl.ac.uk",
+        url="https://github.com/charliebudd/torch-content-area",
+        license="MIT",
+        packages=["torchcontentarea", "torchcontentarea/pythonimplementation"],
+        package_dir={"":"src"},
+        package_data={'torchcontentarea': ['models/*.pt']},
+        ext_modules=[cpp_extension.CUDAExtension("torchcontentareaext", ext_source_files, extra_compile_args=compile_args)],
+        cmdclass=versioneer.get_cmdclass({"build_ext": cpp_extension.BuildExtension})
+    )
+except:
+    print("########################################################################")
+    print("Could not compile CUDA extention, falling back to python implementation!")
+    print("########################################################################")
+    setup(
+        name="torchcontentarea",
+        version=versioneer.get_version(),
+        description="A PyTorch tool kit for estimating the content area in endoscopic footage.",
+        long_description=long_description,
+        long_description_content_type="text/markdown",
+        author="Charlie Budd",
+        author_email="charles.budd@kcl.ac.uk",
+        url="https://github.com/charliebudd/torch-content-area",
+        license="MIT",
+        packages=["torchcontentarea", "torchcontentarea/pythonimplementation"],
+        package_dir={"":"src"},
+        package_data={'torchcontentarea': ['models/*.pt']},
+    )
