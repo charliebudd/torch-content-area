@@ -1,7 +1,13 @@
 import torch
-import torchcontentareaext as ext
 from typing import Sequence, Optional
 
+try:
+    import torchcontentareaext as ext
+    FALL_BACK = False
+except:
+    print("Falling back to python implementation...")
+    from . import pythonimplementation as ext
+    FALL_BACK = True
 
 models = {}
 
@@ -31,7 +37,7 @@ def estimate_area_learned(image: torch.Tensor, strip_count: int=16, model: Optio
     """
     if model == None:
         model = get_default_model(image.device)
-    return ext.estimate_area_learned(image, strip_count, model._c, model_patch_size, confidence_thresholds)
+    return ext.estimate_area_learned(image, strip_count, model if FALL_BACK else model._c, model_patch_size, confidence_thresholds)
 
 
 def get_points_handcrafted(image: torch.Tensor, strip_count: int=16, feature_thresholds: Sequence[float]=(20, 30, 25)) -> torch.Tensor:
@@ -47,7 +53,7 @@ def get_points_learned(image: torch.Tensor, strip_count: int=16, model: Optional
     """
     if model == None:
         model = get_default_model(image.device)
-    return ext.get_points_learned(image, strip_count, model._c, model_patch_size)
+    return ext.get_points_learned(image, strip_count, model if FALL_BACK else model._c, model_patch_size)
 
 
 def fit_area(points: torch.Tensor, image_size: Sequence[int], confidence_thresholds: Sequence[float]=(0.03, 0.06)) -> torch.Tensor:
