@@ -68,10 +68,13 @@ def get_circle(points):
         lhs[2, 0] = lhs[0, 2]
         lhs[2, 1] = lhs[1, 2]
 
-        L = torch.linalg.cholesky(lhs)
-        y = torch.linalg.solve(L, rhs)
-        x = torch.linalg.solve(L.T, y)
-        
+        try:
+            L = torch.linalg.cholesky(lhs)
+            y = torch.linalg.solve(L, rhs)
+            x = torch.linalg.solve(L.T, y)
+        except:
+            return None
+            
         A, B, C = x[0], x[1], x[2]
 
         x = A / 2.0
@@ -108,7 +111,14 @@ def fit_area(points: torch.Tensor, image_size: Sequence[int], confidence_thresho
             inliers = point_batch[:, indices]
 
             for _ in range(RANSAC_ITERATIONS):
-                x, y, r = get_circle(inliers)
+                circle = get_circle(inliers)
+                
+                if circle is None:
+                    x, y, r = 0, 0, 0
+                    circle_score = 0
+                    break
+                
+                x, y, r = circle
                 
                 dx = x - point_batch[0]
                 dy = y - point_batch[1]
