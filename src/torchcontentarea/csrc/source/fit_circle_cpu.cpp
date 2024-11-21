@@ -159,12 +159,13 @@ namespace cpu
     // =========================================================================
     // Main function...
 
-    void fit_circle(const float* points_x, const float* points_y, const float* points_score, const int batch_count, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width, float* results)
+    void fit_circle(const float* points_x, const float* points_y, const float* points_score, const int batch_count, const int point_count, const ConfidenceThresholds confidence_thresholds, const int image_height, const int image_width, float* results, FitCircleStatus* fit_circle_status)
     {
         int* compacted_points = (int*)malloc(3 * point_count * sizeof(int));
         int* compacted_points_x = compacted_points + 0 * point_count;
         int* compacted_points_y = compacted_points + 1 * point_count;
         float* compacted_points_s = (float*)compacted_points + 2 * point_count;
+        *fit_circle_status = FitCircleStatus::invalid;
 
 
         for (int batch_index = 0; batch_index < batch_count; ++batch_index)
@@ -190,10 +191,12 @@ namespace cpu
             // Early out...
             if (real_point_count < 3)
             {
+                *fit_circle_status = FitCircleStatus::no_points;
                 return;
             }
 
             // Ransac attempts...
+            bool circle_found = false;
             for (int ransac_attempt = 0; ransac_attempt < RANSAC_ATTEMPTS; ++ransac_attempt)
             {
                 int inlier_count = 3;
@@ -242,7 +245,12 @@ namespace cpu
                     results[1 + batch_index * 4] = circle_y;
                     results[2 + batch_index * 4] = circle_r;
                     results[3 + batch_index * 4] = circle_score;
+                    circle_found = true;
                 }
+            }
+
+            if (circle_found) {
+                *fit_circle_status = FitCircleStatus::success; 
             }
         }
 

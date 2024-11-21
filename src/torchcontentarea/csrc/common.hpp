@@ -41,6 +41,13 @@ enum ImageFormat
     gray_long,
 };
 
+enum FitCircleStatus
+{
+    success,
+    no_points,
+    invalid,
+};
+
 struct Image
 {
     Image(ImageFormat format, const void* data) : format(format), data(data) {}
