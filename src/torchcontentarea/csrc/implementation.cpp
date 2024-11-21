@@ -4,7 +4,7 @@
 #include "cpu_functions.hpp"
 #include "cuda_functions.cuh"
 
-#define IMAGE_DTYPE_ERROR_MSG(t) std::string("Unsupported image dtype .").insert(24, torch::utils::getDtypeNames(t).second)
+#define IMAGE_DTYPE_ERROR_MSG(t) std::string("Unsupported image dtype .").insert(24, t)
 #define IMAGE_NDIM_ERROR_MSG(d) std::string("Expected an image tensor with 3 or 4 dimensions but found .").insert(58, std::to_string(d))
 #define IMAGE_CHANNEL_ERROR_MSG(c) std::string("Expected a grayscale or RGB image but found size  at position 1.").insert(49, std::to_string(c))
 #define POINTS_NDIM_ERROR_MSG(d) std::string("Expected a point tensor with 2 or 3 dimensions but found .").insert(52, std::to_string(d))
@@ -31,7 +31,7 @@ void check_image_tensor(torch::Tensor &image)
         case (torch::kByte): break;
         case (torch::kInt): break;
         case (torch::kLong): break;
-        default: throw std::runtime_error(IMAGE_DTYPE_ERROR_MSG(torch::typeMetaToScalarType(image.dtype())));
+        default: throw std::runtime_error(IMAGE_DTYPE_ERROR_MSG(at::toString(image.dtype())));
     }
 }
 
@@ -59,8 +59,8 @@ Image get_image_data(torch::Tensor image)
         case (torch::kDouble): return Image(is_rgb ? ImageFormat::rgb_double : ImageFormat::gray_double, (void*)image.data_ptr<double  >());
         case (torch::kByte):   return Image(is_rgb ? ImageFormat::rgb_uint8  : ImageFormat::gray_uint8,  (void*)image.data_ptr<uint8   >());
         case (torch::kInt):    return Image(is_rgb ? ImageFormat::rgb_int    : ImageFormat::gray_int,    (void*)image.data_ptr<int     >());
-        case (torch::kLong):   return Image(is_rgb ? ImageFormat::rgb_long   : ImageFormat::gray_long,   (void*)image.data_ptr<long int>());
-        default: throw std::runtime_error(IMAGE_DTYPE_ERROR_MSG(torch::typeMetaToScalarType(image.dtype())));
+        case (torch::kLong):   return Image(is_rgb ? ImageFormat::rgb_long   : ImageFormat::gray_long,   (void*)image.data_ptr<int64_t>());
+        default: throw std::runtime_error(IMAGE_DTYPE_ERROR_MSG(at::toString(image.dtype())));
     }
 }
 
